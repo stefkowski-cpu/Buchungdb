@@ -605,6 +605,12 @@
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-cyan)"></span>Einnahmen vs. Ausgaben</div>
                         <div class="chart-container"><canvas id="chart-income-expense"></canvas></div>
                     </div>
+
+                    <!-- Forecast -->
+                    <div class="chart-card full-width">
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>Prognose bis 2032 (basierend auf Filterdaten)</div>
+                        <div class="chart-container tall"><canvas id="chart-forecast"></canvas></div>
+                    </div>
                 </div>
 
                 <!-- Table -->
@@ -974,6 +980,17 @@ function toggleTopRecipient(i){
 }
 
 // ---- Exclusion Tags ----
+function applyDefaultExclusions(){
+    if(COL_MAP.kat1!==null){
+        const kat1Vals=getUnique('kat1');
+        ['Umschichtung','Haus'].forEach(v=>{if(kat1Vals.includes(v))excludedKat1.add(v);});
+    }
+    if(COL_MAP.kat2!==null){
+        const kat2Vals=getUnique('kat2');
+        if(kat2Vals.includes('Umschichtung'))excludedKat2.add('Umschichtung');
+    }
+}
+
 function buildExclusionTags(){
     if(COL_MAP.kat0!==null){
         document.getElementById('exclude-kat0-section').style.display='';
@@ -981,16 +998,11 @@ function buildExclusionTags(){
     }
     if(COL_MAP.kat1!==null){
         document.getElementById('exclude-kat1-section').style.display='';
-        // Default exclusions: Umschichtung, Haus
-        const kat1Vals=getUnique('kat1');
-        ['Umschichtung','Haus'].forEach(v=>{if(kat1Vals.includes(v))excludedKat1.add(v);});
+        applyDefaultExclusions();
         renderExclusionTags('kat1');
     }
     if(COL_MAP.kat2!==null){
         document.getElementById('exclude-kat2-section').style.display='';
-        // Default exclusion: Umschichtung
-        const kat2Vals=getUnique('kat2');
-        if(kat2Vals.includes('Umschichtung'))excludedKat2.add('Umschichtung');
         renderExclusionTags('kat2');
     }
 }
@@ -1079,8 +1091,10 @@ function resetAllFilters(){
         const el=document.getElementById(id);if(el)el.value='';
     });
     excludedKat0.clear(); excludedKat1.clear(); excludedKat2.clear();
+    applyDefaultExclusions();
     if(COL_MAP.kat0!==null) renderExclusionTags('kat0');
-    renderExclusionTags('kat1'); renderExclusionTags('kat2');
+    if(COL_MAP.kat1!==null) renderExclusionTags('kat1');
+    if(COL_MAP.kat2!==null) renderExclusionTags('kat2');
     selectedExpenseRanges.clear(); selectedTopRecipients.clear();
     renderExpenseRangeTags(); if(topRecipients.length>0)renderTopRecipientTags();
     applyAllFilters();
@@ -1160,6 +1174,7 @@ function updateCharts(){
     updateKat2TimeChart();
     updateSaldoMonthlyChart();
     updateIncomeExpenseChart();
+    updateForecastChart();
 }
 
 // Drill-down state
@@ -1424,6 +1439,92 @@ function updateIncomeExpenseChart(){
             plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11}}},
                 tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
                 datalabels:{display:true,color:'#fff',font:{size:12,weight:700},formatter:v=>fmtShort(v)}}}
+    });
+}
+
+// ---- Forecast Chart ----
+function updateForecastChart(){
+    destroyChart('forecast');
+    const data=[...chartDataBoth()].filter(r=>r._date).sort((a,b)=>a._date-b._date);
+    if(data.length<2) return;
+
+    // Build monthly aggregates
+    const byMonth={};
+    data.forEach(r=>{
+        const mk=monthKey(r._date);
+        if(!byMonth[mk]) byMonth[mk]={e:0,a:0};
+        byMonth[mk].e+=Math.abs(num(r,'einnahmen'));
+        byMonth[mk].a+=Math.abs(num(r,'ausgaben'));
+    });
+    const mKeys=Object.keys(byMonth).sort();
+    if(mKeys.length<2) return;
+
+    // Historical saldo per month
+    const histSaldo=mKeys.map(k=>byMonth[k].e-byMonth[k].a);
+
+    // Linear regression on monthly saldo
+    const n=histSaldo.length;
+    let sumX=0,sumY=0,sumXY=0,sumX2=0;
+    histSaldo.forEach((y,i)=>{sumX+=i;sumY+=y;sumXY+=i*y;sumX2+=i*i;});
+    const slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX)||0;
+    const intercept=(sumY-slope*sumX)/n;
+
+    // Moving average (last 6 months) for smoothed trend
+    const window=Math.min(6,n);
+    const lastAvg=histSaldo.slice(-window).reduce((a,b)=>a+b,0)/window;
+
+    // Blend: 70% moving average + 30% regression for stability
+    const blendBase=lastAvg*0.7+(slope*(n-1)+intercept)*0.3;
+    const trendPerMonth=slope*0.3;
+
+    // Build historical cumulative (starting at 0)
+    const histPts=[];
+    let cum=0;
+    const firstDate=new Date(parseInt(mKeys[0].split('-')[0]),parseInt(mKeys[0].split('-')[1])-1,1);
+    mKeys.forEach((k,i)=>{
+        cum+=histSaldo[i];
+        const[y,m]=k.split('-').map(Number);
+        histPts.push({x:new Date(y,m-1,15),y:cum});
+    });
+
+    // Forecast: from last month to Dec 2032
+    const lastKey=mKeys[mKeys.length-1];
+    const[ly,lm]=lastKey.split('-').map(Number);
+    const forecastPts=[{x:histPts[histPts.length-1].x,y:cum}];
+    let fcum=cum;
+    let fMonth=lm;
+    let fYear=ly;
+    let idx=0;
+    while(fYear<2032||(fYear===2032&&fMonth<=12)){
+        fMonth++;
+        if(fMonth>12){fMonth=1;fYear++;}
+        if(fYear>2032) break;
+        const monthlySaldo=blendBase+trendPerMonth*idx;
+        fcum+=monthlySaldo;
+        forecastPts.push({x:new Date(fYear,fMonth-1,15),y:fcum});
+        idx++;
+    }
+
+    // Confidence band (upper/lower) widening over time
+    const stdDev=Math.sqrt(histSaldo.reduce((s,v)=>{const d=v-(sumY/n);return s+d*d;},0)/n)||1;
+    const upperPts=forecastPts.map((p,i)=>({x:p.x,y:p.y+stdDev*Math.sqrt(i+1)*1.2}));
+    const lowerPts=forecastPts.map((p,i)=>({x:p.x,y:p.y-stdDev*Math.sqrt(i+1)*1.2}));
+
+    charts.forecast=new Chart(document.getElementById('chart-forecast'),{
+        type:'line',
+        data:{datasets:[
+            {label:'Ist-Verlauf',data:histPts,borderColor:'#4a6cf7',backgroundColor:'rgba(74,108,247,0.08)',fill:false,tension:0.3,pointRadius:0,borderWidth:2.5},
+            {label:'Prognose',data:forecastPts,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,0.06)',fill:false,tension:0.3,pointRadius:0,borderWidth:2.5,borderDash:[6,4]},
+            {label:'Obere Grenze',data:upperPts,borderColor:'transparent',backgroundColor:'rgba(124,58,237,0.08)',fill:'+1',pointRadius:0,borderWidth:0},
+            {label:'Untere Grenze',data:lowerPts,borderColor:'transparent',backgroundColor:'rgba(124,58,237,0.08)',fill:false,pointRadius:0,borderWidth:0},
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10},filter:item=>item.text==='Ist-Verlauf'||item.text==='Prognose'}},
+                tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw.y)}}},
+            scales:{
+                x:{type:'time',time:{unit:'quarter',tooltipFormat:'MMM yyyy',displayFormats:{quarter:'MMM yy'}},grid:{display:false}},
+                y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}}
+            }}
     });
 }
 
