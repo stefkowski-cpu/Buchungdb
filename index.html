@@ -188,6 +188,21 @@
         }
         .sf-group select option { background: var(--bg-card); }
 
+        /* Multi-select tags (Jahr/Monat) */
+        .multi-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .multi-tag {
+            display: inline-flex; align-items: center;
+            padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; user-select: none;
+            border: 1px solid var(--border); color: var(--text-muted);
+            background: transparent;
+        }
+        .multi-tag:hover { border-color: var(--accent-blue); color: var(--text-secondary); }
+        .multi-tag.selected {
+            background: var(--tag-bg); color: var(--accent-blue);
+            border-color: rgba(74,108,247,0.35); font-weight: 700;
+        }
+
         /* Exclusion tags */
         .exclude-section { margin-top: 6px; }
         .exclude-label {
@@ -207,6 +222,28 @@
         .exclude-tag.excluded {
             background: var(--tag-exclude-bg); color: var(--accent-red);
             border-color: rgba(239,68,68,0.2); text-decoration: line-through;
+        }
+
+        /* Expense analysis tags */
+        .analysis-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .analysis-tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 9px; border-radius: 12px; font-size: 0.66rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; user-select: none;
+            border: 1px solid var(--border); color: var(--text-secondary);
+            background: transparent;
+        }
+        .analysis-tag:hover { border-color: var(--accent-orange); }
+        .analysis-tag.selected {
+            background: rgba(245,158,11,0.12); color: var(--accent-orange);
+            border-color: rgba(245,158,11,0.35); font-weight: 700;
+        }
+        .analysis-tag .atag-count {
+            font-size: 0.58rem; background: var(--border); color: var(--text-muted);
+            padding: 0 5px; border-radius: 8px; font-weight: 700;
+        }
+        .analysis-tag.selected .atag-count {
+            background: rgba(245,158,11,0.2); color: var(--accent-orange);
         }
 
         /* Summary mini cards in sidebar */
@@ -426,11 +463,11 @@
                 <div class="sidebar-label">Zeitraum</div>
                 <div class="sf-group">
                     <label>Jahr</label>
-                    <select id="tf-year"><option value="">Alle</option></select>
+                    <div class="multi-tags" id="tf-years"></div>
                 </div>
                 <div class="sf-group">
                     <label>Monat</label>
-                    <select id="tf-month"><option value="">Alle</option></select>
+                    <div class="multi-tags" id="tf-months"></div>
                 </div>
                 <div class="sf-group">
                     <label>Kalenderwoche</label>
@@ -487,6 +524,19 @@
             <div class="sidebar-section" id="exclude-kat2-section" style="display:none">
                 <div class="sidebar-label">Kat2 Ausblenden</div>
                 <div class="exclude-tags" id="exclude-kat2-tags"></div>
+            </div>
+
+            <!-- Expense Analysis -->
+            <div class="sidebar-section" id="expense-analysis-section" style="display:none">
+                <div class="sidebar-label">Ausgaben-Analyse</div>
+                <div class="sf-group">
+                    <label>Betragsbereich</label>
+                    <div class="analysis-tags" id="expense-range-tags"></div>
+                </div>
+                <div class="sf-group" id="expense-top-section" style="display:none">
+                    <label>H&auml;ufigste Empf&auml;nger</label>
+                    <div class="analysis-tags" id="expense-top-tags"></div>
+                </div>
             </div>
 
             <!-- Reset -->
@@ -565,6 +615,11 @@ let rawData = [], filteredData = [], columns = [], charts = {};
 let currentPage = 1, sortCol = null, sortDir = 1;
 const pageSize = 25;
 let excludedKat1 = new Set(), excludedKat2 = new Set();
+let selectedYears = new Set(), selectedMonths = new Set();
+let expenseRanges = []; // auto-computed
+let selectedExpenseRanges = new Set();
+let topRecipients = []; // auto-computed
+let selectedTopRecipients = new Set();
 
 const COL_MAP = {
     datum:null, empfaenger:null, kat1:null, kat2:null,
@@ -677,6 +732,8 @@ function handleFile(file){
                 if(COL_MAP.datum!==null){row._date=parseDate(row[COL_MAP.datum]);row._week=getISOWeek(row._date);}
             });
             excludedKat1=new Set(); excludedKat2=new Set();
+            selectedYears=new Set(); selectedMonths=new Set();
+            selectedExpenseRanges=new Set(); selectedTopRecipients=new Set();
             initDashboard();
         }catch(err){alert('Fehler: '+err.message);}
         finally{document.getElementById('loading-overlay').classList.add('hidden');}
@@ -715,11 +772,10 @@ function populateSelect(id,values){
 }
 
 function buildSidebarFilters(){
-    // Year
+    // Year tags
     const years=[...new Set(rawData.map(r=>r._date?r._date.getFullYear():null).filter(Boolean))].sort((a,b)=>b-a);
-    populateSelect('tf-year',years);
-
-    populateMonthFilter();
+    renderYearTags(years);
+    renderMonthTags();
     populateWeekFilter();
 
     // Category selects
@@ -729,10 +785,7 @@ function buildSidebarFilters(){
     if(COL_MAP.verkettet!==null){document.getElementById('sf-verkettet-group').style.display='';populateSelect('f-verkettet',getUnique('verkettet'));}
 
     // Wire events
-    document.getElementById('tf-year').addEventListener('change',()=>{populateMonthFilter();populateWeekFilter();applyAllFilters();});
-    document.getElementById('tf-month').addEventListener('change',()=>{populateWeekFilter();applyAllFilters();});
     document.getElementById('tf-kw').addEventListener('change',applyAllFilters);
-
     ['f-kat1','f-kat2','f-kat0','f-verkettet'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.addEventListener('change',applyAllFilters);
     });
@@ -742,25 +795,54 @@ function buildSidebarFilters(){
     ['f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         document.getElementById(id).addEventListener('input',debounce(applyAllFilters,300));
     });
+
+    // Expense analysis
+    buildExpenseAnalysis();
 }
 
-function populateMonthFilter(){
-    const sy=gfv('tf-year');
+// ---- Multi-select Year/Month ----
+function renderYearTags(years){
+    if(!years) years=[...new Set(rawData.map(r=>r._date?r._date.getFullYear():null).filter(Boolean))].sort((a,b)=>b-a);
+    const container=document.getElementById('tf-years');
+    container.innerHTML=years.map(y=>
+        `<span class="multi-tag ${selectedYears.has(y)?'selected':''}" onclick="toggleYear(${y})">${y}</span>`
+    ).join('');
+}
+function toggleYear(y){
+    if(selectedYears.has(y)) selectedYears.delete(y); else selectedYears.add(y);
+    renderYearTags();
+    renderMonthTags();
+    populateWeekFilter();
+    applyAllFilters();
+}
+
+function renderMonthTags(){
     const ms=new Set();
-    rawData.forEach(r=>{if(r._date){if(!sy||r._date.getFullYear()===parseInt(sy))ms.add(r._date.getMonth());}});
-    const sel=document.getElementById('tf-month');const prev=sel.value;
-    sel.innerHTML='<option value="">Alle</option>';
-    [...ms].sort((a,b)=>a-b).forEach(m=>{sel.innerHTML+=`<option value="${m}">${MONTH_NAMES[m]}</option>`;});
-    if([...ms].includes(parseInt(prev)))sel.value=prev;
+    rawData.forEach(r=>{
+        if(r._date){
+            if(selectedYears.size===0||selectedYears.has(r._date.getFullYear()))
+                ms.add(r._date.getMonth());
+        }
+    });
+    const container=document.getElementById('tf-months');
+    const MSHORT=['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    container.innerHTML=[...ms].sort((a,b)=>a-b).map(m=>
+        `<span class="multi-tag ${selectedMonths.has(m)?'selected':''}" onclick="toggleMonth(${m})">${MSHORT[m]}</span>`
+    ).join('');
+}
+function toggleMonth(m){
+    if(selectedMonths.has(m)) selectedMonths.delete(m); else selectedMonths.add(m);
+    renderMonthTags();
+    populateWeekFilter();
+    applyAllFilters();
 }
 
 function populateWeekFilter(){
-    const sy=gfv('tf-year'),sm=gfv('tf-month');
     const ws=new Set();
     rawData.forEach(r=>{
         if(r._date&&r._week){
-            if(sy&&r._date.getFullYear()!==parseInt(sy))return;
-            if(sm!==''&&sm&&r._date.getMonth()!==parseInt(sm))return;
+            if(selectedYears.size>0&&!selectedYears.has(r._date.getFullYear()))return;
+            if(selectedMonths.size>0&&!selectedMonths.has(r._date.getMonth()))return;
             ws.add(r._week);
         }
     });
@@ -768,6 +850,75 @@ function populateWeekFilter(){
     sel.innerHTML='<option value="">Alle</option>';
     [...ws].sort((a,b)=>a-b).forEach(w=>{sel.innerHTML+=`<option value="${w}">KW ${w}</option>`;});
     if([...ws].includes(parseInt(prev)))sel.value=prev;
+}
+
+// ---- Expense Analysis (auto-generated) ----
+function buildExpenseAnalysis(){
+    const section=document.getElementById('expense-analysis-section');
+    section.style.display='';
+
+    // Compute smart ranges based on data distribution
+    const amounts=rawData.map(r=>num(r,'ausgaben')).filter(a=>a>0).sort((a,b)=>a-b);
+    if(amounts.length===0){section.style.display='none';return;}
+
+    const max=amounts[amounts.length-1];
+    const thresholds=[0,5,10,25,50,100,250,500,1000,2500,5000,10000];
+    expenseRanges=[];
+    for(let i=0;i<thresholds.length;i++){
+        const lo=thresholds[i];
+        const hi=i<thresholds.length-1?thresholds[i+1]:Infinity;
+        if(lo>max*1.5)break;
+        const count=amounts.filter(a=>a>lo&&a<=hi).length;
+        if(count>0){
+            const label=hi===Infinity?`>${lo}\u00a0\u20ac`:`${lo}\u2013${hi}\u00a0\u20ac`;
+            expenseRanges.push({lo,hi,label,count});
+        }
+    }
+    renderExpenseRangeTags();
+
+    // Top recipients by frequency
+    if(COL_MAP.empfaenger!==null){
+        const freq={};
+        rawData.forEach(r=>{
+            const e=val(r,'empfaenger').toString().trim();
+            if(e){
+                if(!freq[e])freq[e]={count:0,total:0};
+                freq[e].count++;
+                freq[e].total+=num(r,'ausgaben');
+            }
+        });
+        topRecipients=Object.entries(freq)
+            .sort((a,b)=>b[1].total-a[1].total)
+            .slice(0,12)
+            .map(([name,d])=>({name,count:d.count,total:d.total}));
+        if(topRecipients.length>0){
+            document.getElementById('expense-top-section').style.display='';
+            renderTopRecipientTags();
+        }
+    }
+}
+
+function renderExpenseRangeTags(){
+    document.getElementById('expense-range-tags').innerHTML=expenseRanges.map((r,i)=>
+        `<span class="analysis-tag ${selectedExpenseRanges.has(i)?'selected':''}" onclick="toggleExpenseRange(${i})">${r.label} <span class="atag-count">${r.count}</span></span>`
+    ).join('');
+}
+function toggleExpenseRange(i){
+    if(selectedExpenseRanges.has(i)) selectedExpenseRanges.delete(i); else selectedExpenseRanges.add(i);
+    renderExpenseRangeTags();
+    applyAllFilters();
+}
+
+function renderTopRecipientTags(){
+    document.getElementById('expense-top-tags').innerHTML=topRecipients.map((r,i)=>{
+        const short=r.name.length>22?r.name.substring(0,20)+'...':r.name;
+        return`<span class="analysis-tag ${selectedTopRecipients.has(i)?'selected':''}" onclick="toggleTopRecipient(${i})" title="${r.name}">${short} <span class="atag-count">${r.count}x</span></span>`;
+    }).join('');
+}
+function toggleTopRecipient(i){
+    if(selectedTopRecipients.has(i)) selectedTopRecipients.delete(i); else selectedTopRecipients.add(i);
+    renderTopRecipientTags();
+    applyAllFilters();
 }
 
 // ---- Exclusion Tags ----
@@ -801,12 +952,25 @@ function toggleExclusion(key,value){
 
 // ---- Apply Filters ----
 function applyAllFilters(){
-    const ty=gfv('tf-year'),tm=gfv('tf-month'),tw=gfv('tf-kw');
+    const tw=gfv('tf-kw');
+
+    // Build set of allowed expense ranges if any selected
+    let allowedRanges=null;
+    if(selectedExpenseRanges.size>0){
+        allowedRanges=[...selectedExpenseRanges].map(i=>expenseRanges[i]);
+    }
+    // Build set of allowed recipients if any selected
+    let allowedRecipients=null;
+    if(selectedTopRecipients.size>0){
+        allowedRecipients=new Set([...selectedTopRecipients].map(i=>topRecipients[i].name));
+    }
 
     filteredData=rawData.filter(row=>{
         const d=row._date;
-        if(ty&&d&&d.getFullYear()!==parseInt(ty))return false;
-        if(tm!==''&&tm&&d&&d.getMonth()!==parseInt(tm))return false;
+        // Multi-select year
+        if(selectedYears.size>0&&d&&!selectedYears.has(d.getFullYear()))return false;
+        // Multi-select month
+        if(selectedMonths.size>0&&d&&!selectedMonths.has(d.getMonth()))return false;
         if(tw&&row._week!==parseInt(tw))return false;
 
         const emp=gfv('f-empfaenger');
@@ -818,12 +982,22 @@ function applyAllFilters(){
         const minA=gfv('f-min-ausgaben'); if(minA&&num(row,'ausgaben')<parseFloat(minA))return false;
         const maxA=gfv('f-max-ausgaben'); if(maxA&&num(row,'ausgaben')>parseFloat(maxA))return false;
         const bt=gfv('f-betreff'); if(bt&&!val(row,'betreff').toString().toLowerCase().includes(bt.toLowerCase()))return false;
+
+        // Expense range filter
+        if(allowedRanges){
+            const a=num(row,'ausgaben');
+            if(!allowedRanges.some(r=>a>r.lo&&a<=r.hi))return false;
+        }
+        // Top recipient filter
+        if(allowedRecipients){
+            if(!allowedRecipients.has(val(row,'empfaenger').toString().trim()))return false;
+        }
         return true;
     });
 
     let cnt=0;
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{if(gfv(id))cnt++;});
-    cnt+=excludedKat1.size+excludedKat2.size;
+    cnt+=excludedKat1.size+excludedKat2.size+selectedExpenseRanges.size+selectedTopRecipients.size;
     document.getElementById('active-filter-count').textContent=cnt;
 
     currentPage=1;
@@ -833,15 +1007,17 @@ function applyAllFilters(){
 }
 
 function resetAllFilters(){
-    document.getElementById('tf-year').value='';
-    populateMonthFilter(); populateWeekFilter();
-    document.getElementById('tf-month').value='';
+    selectedYears.clear(); selectedMonths.clear();
+    renderYearTags(); renderMonthTags();
+    populateWeekFilter();
     document.getElementById('tf-kw').value='';
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
     excludedKat1.clear(); excludedKat2.clear();
     renderExclusionTags('kat1'); renderExclusionTags('kat2');
+    selectedExpenseRanges.clear(); selectedTopRecipients.clear();
+    renderExpenseRangeTags(); if(topRecipients.length>0)renderTopRecipientTags();
     applyAllFilters();
 }
 
