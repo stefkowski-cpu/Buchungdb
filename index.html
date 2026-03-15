@@ -676,8 +676,7 @@ function getISOWeek(d) {
 function fmtDate(d) { return d?d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}):''; }
 function fmtCurrency(n) { return n.toLocaleString('de-DE',{style:'currency',currency:'EUR'}); }
 function fmtShort(n) {
-    if(Math.abs(n)>=1000) return (n/1000).toFixed(1).replace('.',',')+'k\u00a0\u20ac';
-    return n.toFixed(0)+'\u00a0\u20ac';
+    return Math.round(n).toLocaleString('de-DE')+'\u00a0\u20ac';
 }
 function monthKey(d) { return d?(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')):'?'; }
 function monthLabel(key) {
@@ -1073,23 +1072,69 @@ function updateCharts(){
     updateIncomeExpenseChart();
 }
 
+// Drill-down state
+let monthlyDrill=null; // null=overview, 'einnahmen'/'ausgaben'=zoomed
+
 function updateMonthlyChart(){
     destroyChart('monthly');
     const data=chartDataBoth();
     const byMonth={};
     data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]={e:0,a:0};byMonth[mk].e+=num(r,'einnahmen');byMonth[mk].a+=num(r,'ausgaben');});
     const keys=Object.keys(byMonth).sort();
-    charts.monthly=new Chart(document.getElementById('chart-monthly'),{
-        type:'bar',
-        data:{labels:keys.map(monthLabel),datasets:[
-            {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
-            {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
-        ]},
-        options:{responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10}}}},
-            scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}
-        }
-    });
+
+    const titleEl=document.getElementById('chart-monthly').closest('.chart-card').querySelector('.chart-title');
+
+    if(!monthlyDrill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-blue)"></span>Einnahmen &amp; Ausgaben pro Monat';
+        charts.monthly=new Chart(document.getElementById('chart-monthly'),{
+            type:'bar',
+            data:{labels:keys.map(monthLabel),datasets:[
+                {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
+                {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
+            ]},
+            options:{responsive:true,maintainAspectRatio:false,
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){
+                        monthlyDrill=elems[0].datasetIndex===0?'einnahmen':'ausgaben';
+                        updateMonthlyChart();
+                    }
+                },
+                plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}
+            }
+        });
+    } else {
+        // Drilled into Einnahmen or Ausgaben by Kat1
+        const isE=monthlyDrill==='einnahmen';
+        const label=isE?'Einnahmen':'Ausgaben';
+        const color=isE?'#10b981':'#ef4444';
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} nach Kat1 pro Monat <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill=null;updateMonthlyChart();">\u2190 zur\u00fcck</span>`;
+
+        const byMonthKat={};const katSet=new Set();
+        data.forEach(r=>{
+            const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
+            if(!byMonthKat[mk])byMonthKat[mk]={};
+            const amount=isE?num(r,'einnahmen'):num(r,'ausgaben');
+            byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+amount;
+            katSet.add(k);
+        });
+        const katTotals={};katSet.forEach(k=>{katTotals[k]=0;});
+        Object.values(byMonthKat).forEach(m=>{for(const[k,v]of Object.entries(m))katTotals[k]+=v;});
+        const topKats=Object.entries(katTotals).sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0]);
+
+        const datasets=topKats.map((k,i)=>({
+            label:k,data:keys.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
+            backgroundColor:COLORS[i%COLORS.length]+'88',borderColor:COLORS[i%COLORS.length],borderWidth:1,borderRadius:3,
+        }));
+        charts.monthly=new Chart(document.getElementById('chart-monthly'),{
+            type:'bar',data:{labels:keys.map(monthLabel),datasets},
+            options:{responsive:true,maintainAspectRatio:false,
+                plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:9}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                scales:{y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{stacked:true,grid:{display:false}}}}
+        });
+    }
 }
 
 function updateCumulativeChart(){
@@ -1105,19 +1150,44 @@ function updateCumulativeChart(){
     });
 }
 
+let kat1Drill=null; // null=all, string=specific category
+
 function updateKat1Chart(){
     destroyChart('kat1');
     const data=chartData('kat1');
-    const byKat={};
-    data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
-    const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
-    charts.kat1=new Chart(document.getElementById('chart-kat1'),{
-        type:'doughnut',
-        data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-        options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-            plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
-    });
+    const titleEl=document.getElementById('chart-kat1').closest('.chart-card').querySelector('.chart-title');
+
+    if(!kat1Drill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-purple)"></span>Ausgaben nach Kat1';
+        const byKat={};
+        data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
+        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){kat1Drill=sorted[elems[0].index][0];updateKat1Chart();}
+                },
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    } else {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${kat1Drill} \u2013 nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat1Drill=null;updateKat1Chart();">\u2190 zur\u00fcck</span>`;
+        const byKat2={};
+        data.filter(r=>(val(r,'kat1').toString().trim()||'Ohne')===kat1Drill).forEach(r=>{
+            const k=val(r,'kat2').toString().trim()||'Ohne';
+            byKat2[k]=(byKat2[k]||0)+num(r,'ausgaben');
+        });
+        const sorted=Object.entries(byKat2).sort((a,b)=>b[1]-a[1]);
+        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    }
 }
 
 function updateKat1TimeChart(){
@@ -1150,19 +1220,44 @@ function updateKat1TimeChart(){
     });
 }
 
+let kat2Drill=null;
+
 function updateKat2Chart(){
     destroyChart('kat2');
     const data=chartData('kat2');
-    const byKat={};
-    data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
-    const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
-    charts.kat2=new Chart(document.getElementById('chart-kat2'),{
-        type:'doughnut',
-        data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-        options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-            plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
-    });
+    const titleEl=document.getElementById('chart-kat2').closest('.chart-card').querySelector('.chart-title');
+
+    if(!kat2Drill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-pink)"></span>Ausgaben nach Kat2';
+        const byKat={};
+        data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
+        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){kat2Drill=sorted[elems[0].index][0];updateKat2Chart();}
+                },
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    } else {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${kat2Drill} \u2013 nach Kat1 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat2Drill=null;updateKat2Chart();">\u2190 zur\u00fcck</span>`;
+        const byKat1={};
+        data.filter(r=>(val(r,'kat2').toString().trim()||'Ohne')===kat2Drill).forEach(r=>{
+            const k=val(r,'kat1').toString().trim()||'Ohne';
+            byKat1[k]=(byKat1[k]||0)+num(r,'ausgaben');
+        });
+        const sorted=Object.entries(byKat1).sort((a,b)=>b[1]-a[1]);
+        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    }
 }
 
 function updateKat2TimeChart(){
