@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -478,6 +479,10 @@
             <!-- Category filters -->
             <div class="sidebar-section">
                 <div class="sidebar-label">Kategorien &amp; Filter <span class="filter-badge" id="active-filter-count">0</span></div>
+                <div class="sf-group" id="sf-kat0-group" style="display:none">
+                    <label>Kat 0</label>
+                    <select id="f-kat0"><option value="">Alle</option></select>
+                </div>
                 <div class="sf-group" id="sf-kat1-group" style="display:none">
                     <label>Kat1</label>
                     <select id="f-kat1"><option value="">Alle</option></select>
@@ -485,10 +490,6 @@
                 <div class="sf-group" id="sf-kat2-group" style="display:none">
                     <label>Kat2</label>
                     <select id="f-kat2"><option value="">Alle</option></select>
-                </div>
-                <div class="sf-group" id="sf-kat0-group" style="display:none">
-                    <label>Kat 0</label>
-                    <select id="f-kat0"><option value="">Alle</option></select>
                 </div>
                 <div class="sf-group" id="sf-verkettet-group" style="display:none">
                     <label>Verkettet</label>
@@ -777,22 +778,22 @@ function buildSidebarFilters(){
     renderMonthTags();
     populateWeekFilter();
 
-    // Category selects (cascading: Kat1 -> Kat2 -> Kat0)
-    if(COL_MAP.kat1!==null){document.getElementById('sf-kat1-group').style.display='';populateSelect('f-kat1',getUnique('kat1'));}
+    // Category selects (cascading: Kat0 -> Kat1 -> Kat2)
+    if(COL_MAP.kat0!==null){document.getElementById('sf-kat0-group').style.display='';populateSelect('f-kat0',getUnique('kat0'));}
+    if(COL_MAP.kat1!==null){document.getElementById('sf-kat1-group').style.display='';populateCascadeKat1();}
     if(COL_MAP.kat2!==null){document.getElementById('sf-kat2-group').style.display='';populateCascadeKat2();}
-    if(COL_MAP.kat0!==null){document.getElementById('sf-kat0-group').style.display='';populateCascadeKat0();}
     if(COL_MAP.verkettet!==null){document.getElementById('sf-verkettet-group').style.display='';populateSelect('f-verkettet',getUnique('verkettet'));}
 
-    // Wire events - cascading category changes
+    // Wire events - cascading: Kat0 -> Kat1 -> Kat2
     document.getElementById('tf-kw').addEventListener('change',applyAllFilters);
+    if(document.getElementById('f-kat0')){
+        document.getElementById('f-kat0').addEventListener('change',()=>{populateCascadeKat1();populateCascadeKat2();applyAllFilters();});
+    }
     if(document.getElementById('f-kat1')){
-        document.getElementById('f-kat1').addEventListener('change',()=>{populateCascadeKat2();populateCascadeKat0();applyAllFilters();});
+        document.getElementById('f-kat1').addEventListener('change',()=>{populateCascadeKat2();applyAllFilters();});
     }
     if(document.getElementById('f-kat2')){
-        document.getElementById('f-kat2').addEventListener('change',()=>{populateCascadeKat0();applyAllFilters();});
-    }
-    if(document.getElementById('f-kat0')){
-        document.getElementById('f-kat0').addEventListener('change',applyAllFilters);
+        document.getElementById('f-kat2').addEventListener('change',applyAllFilters);
     }
     if(document.getElementById('f-verkettet')){
         document.getElementById('f-verkettet').addEventListener('change',applyAllFilters);
@@ -860,31 +861,31 @@ function populateWeekFilter(){
     if([...ws].includes(parseInt(prev)))sel.value=prev;
 }
 
-// ---- Cascading Category Filters (Kat1 -> Kat2 -> Kat0) ----
+// ---- Cascading Category Filters (Kat0 -> Kat1 -> Kat2) ----
+function populateCascadeKat1(){
+    if(COL_MAP.kat1===null) return;
+    const selKat0=gfv('f-kat0');
+    const set=new Set();
+    rawData.forEach(r=>{
+        if(selKat0 && val(r,'kat0').toString()!==selKat0) return;
+        const v=val(r,'kat1').toString().trim();
+        if(v) set.add(v);
+    });
+    populateSelect('f-kat1',[...set].sort());
+}
+
 function populateCascadeKat2(){
     if(COL_MAP.kat2===null) return;
+    const selKat0=gfv('f-kat0');
     const selKat1=gfv('f-kat1');
     const set=new Set();
     rawData.forEach(r=>{
+        if(selKat0 && val(r,'kat0').toString()!==selKat0) return;
         if(selKat1 && val(r,'kat1').toString()!==selKat1) return;
         const v=val(r,'kat2').toString().trim();
         if(v) set.add(v);
     });
     populateSelect('f-kat2',[...set].sort());
-}
-
-function populateCascadeKat0(){
-    if(COL_MAP.kat0===null) return;
-    const selKat1=gfv('f-kat1');
-    const selKat2=gfv('f-kat2');
-    const set=new Set();
-    rawData.forEach(r=>{
-        if(selKat1 && val(r,'kat1').toString()!==selKat1) return;
-        if(selKat2 && val(r,'kat2').toString()!==selKat2) return;
-        const v=val(r,'kat0').toString().trim();
-        if(v) set.add(v);
-    });
-    populateSelect('f-kat0',[...set].sort());
 }
 
 // ---- Expense Analysis (auto-generated) ----
@@ -1073,6 +1074,9 @@ function updateSummary(){
 // ---- Charts ----
 const COLORS=['#4a6cf7','#7c3aed','#ec4899','#10b981','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#14b8a6','#f97316','#6366f1','#d946ef','#0ea5e9','#22c55e','#eab308','#e11d48','#2dd4bf','#a855f7','#fb923c','#64748b'];
 
+Chart.register(ChartDataLabels);
+Chart.defaults.plugins.datalabels={display:false}; // off by default
+
 function chartDefaults(){
     const dark=getTheme()==='dark';
     Chart.defaults.color=dark?'#8888aa':'#6b7280';
@@ -1136,7 +1140,8 @@ function updateMonthlyChart(){
                     }
                 },
                 plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',anchor:'end',align:'end',font:{size:9,weight:600},color:getTheme()==='dark'?'#ccc':'#333',formatter:v=>v>0?fmtShort(v):''}},
                 scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}
             }
         });
@@ -1167,7 +1172,8 @@ function updateMonthlyChart(){
             type:'bar',data:{labels:keys.map(monthLabel),datasets},
             options:{responsive:true,maintainAspectRatio:false,
                 plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:9}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',anchor:'center',align:'center',font:{size:8,weight:600},color:'#fff',formatter:v=>v>0?fmtShort(v):''}},
                 scales:{y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{stacked:true,grid:{display:false}}}}
         });
     }
@@ -1206,7 +1212,8 @@ function updateKat1Chart(){
                     if(elems.length>0){kat1Drill=sorted[elems[0].index][0];updateKat1Chart();}
                 },
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
         });
     } else {
         titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${kat1Drill} \u2013 nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat1Drill=null;updateKat1Chart();">\u2190 zur\u00fcck</span>`;
@@ -1221,7 +1228,8 @@ function updateKat1Chart(){
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
         });
     }
 }
@@ -1276,7 +1284,8 @@ function updateKat2Chart(){
                     if(elems.length>0){kat2Drill=sorted[elems[0].index][0];updateKat2Chart();}
                 },
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
         });
     } else {
         titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${kat2Drill} \u2013 nach Kat1 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat2Drill=null;updateKat2Chart();">\u2190 zur\u00fcck</span>`;
@@ -1291,7 +1300,8 @@ function updateKat2Chart(){
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
+                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
         });
     }
 }
@@ -1337,7 +1347,8 @@ function updateSaldoMonthlyChart(){
         type:'bar',
         data:{labels:keys.map(monthLabel),datasets:[{label:'Saldo',data:values,backgroundColor:colors,borderColor:borders,borderWidth:2,borderRadius:5}]},
         options:{responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.raw)}}},
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.raw)}},
+                datalabels:{display:'auto',anchor:'end',align:function(ctx){return ctx.dataset.data[ctx.dataIndex]>=0?'end':'start';},font:{size:9,weight:600},color:getTheme()==='dark'?'#ccc':'#333',formatter:v=>fmtShort(v)}},
             scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}}
     });
 }
@@ -1352,7 +1363,8 @@ function updateIncomeExpenseChart(){
         data:{labels:['Einnahmen','Ausgaben'],datasets:[{data:[tE,tA],backgroundColor:['#10b98188','#ef444488'],borderColor:['#10b981','#ef4444'],borderWidth:2,hoverOffset:6}]},
         options:{responsive:true,maintainAspectRatio:false,cutout:'68%',
             plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11}}},
-                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
+                datalabels:{display:true,color:'#fff',font:{size:12,weight:700},formatter:v=>fmtShort(v)}}}
     });
 }
 
