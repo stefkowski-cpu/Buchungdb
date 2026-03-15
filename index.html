@@ -554,8 +554,8 @@
                         <div class="chart-container tall"><canvas id="chart-monthly"></canvas></div>
                     </div>
                     <div class="chart-card">
-                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-green)"></span>Kumulierter Saldo</div>
-                        <div class="chart-container tall"><canvas id="chart-cumulative"></canvas></div>
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-green)"></span>Guthabenstand (ab Filterbeginn = 0)</div>
+                        <div class="chart-container tall"><canvas id="chart-balance"></canvas></div>
                     </div>
 
                     <!-- Row 2: Kat1 Ausgaben + Kat1 Einnahmen -->
@@ -1131,7 +1131,7 @@ function chartDataBoth(){
 function updateCharts(){
     chartDefaults();
     updateMonthlyChart();
-    updateCumulativeChart();
+    updateBalanceChart();
     updateKat1EinnahmenChart();
     updateKat1AusgabenChart();
     updateKat1TimeChart();
@@ -1209,16 +1209,37 @@ function updateMonthlyChart(){
     }
 }
 
-function updateCumulativeChart(){
-    destroyChart('cumulative');
+function updateBalanceChart(){
+    destroyChart('balance');
     const data=[...chartDataBoth()].filter(r=>r._date).sort((a,b)=>a._date-b._date);
-    let cum=0;
-    const pts=data.map(r=>{cum+=num(r,'einnahmen')-num(r,'ausgaben');return{x:r._date,y:cum};});
-    charts.cumulative=new Chart(document.getElementById('chart-cumulative'),{
+    let balance=0;
+    const pts=data.map(r=>{
+        balance+=Math.abs(num(r,'einnahmen'))-Math.abs(num(r,'ausgaben'));
+        return{x:r._date,y:balance};
+    });
+    // Insert starting point at 0
+    if(pts.length>0) pts.unshift({x:pts[0].x,y:0});
+
+    const gradient_fill=(ctx)=>{
+        const chart=ctx.chart;
+        const{top,bottom}=chart.chartArea||{top:0,bottom:400};
+        const grad=chart.ctx.createLinearGradient(0,top,0,bottom);
+        grad.addColorStop(0,'rgba(16,185,129,0.18)');
+        grad.addColorStop(1,'rgba(16,185,129,0.01)');
+        return grad;
+    };
+
+    charts.balance=new Chart(document.getElementById('chart-balance'),{
         type:'line',
-        data:{datasets:[{label:'Kumulierter Saldo',data:pts,borderColor:'#4a6cf7',backgroundColor:'rgba(74,108,247,0.08)',fill:true,tension:0.3,pointRadius:0,borderWidth:2.5}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-            scales:{x:{type:'time',time:{unit:'month',tooltipFormat:'dd.MM.yyyy'},grid:{display:false}},y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}}}}
+        data:{datasets:[{label:'Guthabenstand',data:pts,borderColor:'#10b981',backgroundColor:gradient_fill,fill:true,tension:0.3,pointRadius:0,borderWidth:2.5,
+            segment:{borderColor:ctx=>ctx.p1.parsed.y<0?'#ef4444':'#10b981'}}]},
+        options:{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{display:false},
+                tooltip:{callbacks:{label:ctx=>'Guthabenstand: '+fmtCurrency(ctx.raw.y)}}},
+            scales:{
+                x:{type:'time',time:{unit:'month',tooltipFormat:'dd.MM.yyyy'},grid:{display:false}},
+                y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}}
+            }}
     });
 }
 
