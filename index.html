@@ -254,9 +254,6 @@
             border-radius: var(--radius-sm); padding: 10px;
             transition: all 0.2s;
         }
-        .smini-clickable { cursor: pointer; }
-        .smini-clickable:hover { border-color: var(--accent-blue); transform: translateY(-1px); }
-        .smini-active { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(74,108,247,0.25); }
         .smini-label { font-size: 0.62rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .smini-value { font-size: 1.05rem; font-weight: 800; letter-spacing: -0.3px; }
         .smini-value.positive { color: var(--accent-green); }
@@ -561,22 +558,34 @@
                         <div class="chart-container tall"><canvas id="chart-cumulative"></canvas></div>
                     </div>
 
-                    <!-- Row 2: Kat1 doughnut + Kat1 time series -->
+                    <!-- Row 2: Kat1 Ausgaben + Kat1 Einnahmen -->
                     <div class="chart-card">
-                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>Ausgaben nach Kat1</div>
-                        <div class="chart-container"><canvas id="chart-kat1"></canvas></div>
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-red)"></span>Ausgaben nach Kat1</div>
+                        <div class="chart-container"><canvas id="chart-kat1-ausgaben"></canvas></div>
                     </div>
                     <div class="chart-card">
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-green)"></span>Einnahmen nach Kat1</div>
+                        <div class="chart-container"><canvas id="chart-kat1-einnahmen"></canvas></div>
+                    </div>
+
+                    <!-- Row 3: Kat1 Zeitverlauf (full width) -->
+                    <div class="chart-card full-width">
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>Kat1 im Zeitverlauf</div>
                         <div class="chart-container"><canvas id="chart-kat1-time"></canvas></div>
                     </div>
 
-                    <!-- Row 3: Kat2 doughnut + Kat2 time series -->
+                    <!-- Row 4: Kat2 Ausgaben + Kat2 Einnahmen -->
                     <div class="chart-card">
-                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-pink)"></span>Ausgaben nach Kat2</div>
-                        <div class="chart-container"><canvas id="chart-kat2"></canvas></div>
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-red)"></span>Ausgaben nach Kat2</div>
+                        <div class="chart-container"><canvas id="chart-kat2-ausgaben"></canvas></div>
                     </div>
                     <div class="chart-card">
+                        <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-green)"></span>Einnahmen nach Kat2</div>
+                        <div class="chart-container"><canvas id="chart-kat2-einnahmen"></canvas></div>
+                    </div>
+
+                    <!-- Row 5: Kat2 Zeitverlauf (full width) -->
+                    <div class="chart-card full-width">
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-pink)"></span>Kat2 im Zeitverlauf</div>
                         <div class="chart-container"><canvas id="chart-kat2-time"></canvas></div>
                     </div>
@@ -1046,7 +1055,6 @@ function applyAllFilters(){
 }
 
 function resetAllFilters(){
-    summaryDrill=null;
     selectedYears.clear(); selectedMonths.clear();
     renderYearTags(); renderMonthTags();
     populateWeekFilter();
@@ -1062,30 +1070,21 @@ function resetAllFilters(){
 }
 
 // ---- Summary ----
-let summaryDrill=null; // null=all, 'einnahmen'/'ausgaben'
-
-function toggleSummaryDrill(type){
-    summaryDrill=summaryDrill===type?null:type;
-    updateSummary();
-    updateCharts();
-}
-
 function updateSummary(){
     let tE=0, tA=0;
-    filteredData.forEach(r=>{
+    const sData=chartDataBoth();
+    sData.forEach(r=>{
         const e=num(r,'einnahmen'), a=num(r,'ausgaben');
         tE+=Math.abs(e);
         tA+=Math.abs(a);
     });
     const saldo=tE-tA;
-    const cnt=filteredData.length;
-    const eActive=summaryDrill==='einnahmen'?' smini-active':'';
-    const aActive=summaryDrill==='ausgaben'?' smini-active':'';
+    const cnt=sData.length;
     document.getElementById('summary-mini').innerHTML=`
         <div class="smini"><div class="smini-label">Buchungen</div><div class="smini-value">${cnt.toLocaleString('de-DE')}</div></div>
         <div class="smini"><div class="smini-label">Saldo</div><div class="smini-value ${saldo>=0?'positive':'negative'}">${fmtShort(saldo)}</div></div>
-        <div class="smini smini-clickable${eActive}" onclick="toggleSummaryDrill('einnahmen')"><div class="smini-label">Einnahmen</div><div class="smini-value positive">${fmtShort(tE)}</div></div>
-        <div class="smini smini-clickable${aActive}" onclick="toggleSummaryDrill('ausgaben')"><div class="smini-label">Ausgaben</div><div class="smini-value negative">${fmtShort(tA)}</div></div>
+        <div class="smini"><div class="smini-label">Einnahmen</div><div class="smini-value positive">${fmtShort(tE)}</div></div>
+        <div class="smini"><div class="smini-label">Ausgaben</div><div class="smini-value negative">${fmtShort(tA)}</div></div>
     `;
 }
 
@@ -1131,13 +1130,13 @@ function chartDataBoth(){
 
 function updateCharts(){
     chartDefaults();
-    // If summary drill is active, set monthly drill accordingly
-    if(summaryDrill) monthlyDrill=summaryDrill;
     updateMonthlyChart();
     updateCumulativeChart();
-    updateKat1Chart();
+    updateKat1EinnahmenChart();
+    updateKat1AusgabenChart();
     updateKat1TimeChart();
-    updateKat2Chart();
+    updateKat2EinnahmenChart();
+    updateKat2AusgabenChart();
     updateKat2TimeChart();
     updateSaldoMonthlyChart();
     updateIncomeExpenseChart();
@@ -1223,60 +1222,77 @@ function updateCumulativeChart(){
     });
 }
 
-let kat1Drill=null; // null=all, string=specific category
+let kat1DrillA=null; // drill state for Kat1 Ausgaben
+let kat1DrillE=null; // drill state for Kat1 Einnahmen
 
-function updateKat1Chart(){
-    destroyChart('kat1');
-    const data=chartData('kat1');
-    const titleEl=document.getElementById('chart-kat1').closest('.chart-card').querySelector('.chart-title');
+function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,accentColor,label){
+    destroyChart(chartId);
+    const titleEl=document.getElementById(canvasId).closest('.chart-card').querySelector('.chart-title');
+    const dlConfig={display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}};
 
-    const amtKey1=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
-    const amtLabel1=summaryDrill==='einnahmen'?'Einnahmen':'Ausgaben';
-    if(!kat1Drill){
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${amtLabel1} nach Kat1`;
+    if(!drillVal){
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${label} nach ${katKey==='kat1'?'Kat1':'Kat2'}`;
         const byKat={};
-        data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey1));});
-        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
-        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+        data.forEach(r=>{const k=val(r,katKey).toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey));});
+        const sorted=Object.entries(byKat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+        if(sorted.length===0){titleEl.innerHTML+=` <span style="font-size:0.7rem;color:var(--text-muted)">(keine Daten)</span>`;return;}
+        charts[chartId]=new Chart(document.getElementById(canvasId),{
             type:'doughnut',
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
                 onClick:(evt,elems)=>{
-                    if(elems.length>0){kat1Drill=sorted[elems[0].index][0];updateKat1Chart();}
+                    if(elems.length>0){
+                        const cat=sorted[elems[0].index][0];
+                        if(drillVar==='kat1DrillA'){kat1DrillA=cat;updateKat1AusgabenChart();}
+                        else if(drillVar==='kat1DrillE'){kat1DrillE=cat;updateKat1EinnahmenChart();}
+                        else if(drillVar==='kat2DrillA'){kat2DrillA=cat;updateKat2AusgabenChart();}
+                        else if(drillVar==='kat2DrillE'){kat2DrillE=cat;updateKat2EinnahmenChart();}
+                    }
                 },
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
-                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},datalabels:dlConfig}}
         });
     } else {
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${kat1Drill} \u2013 nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat1Drill=null;updateKat1Chart();">\u2190 zur\u00fcck</span>`;
-        const byKat2={};
-        data.filter(r=>(val(r,'kat1').toString().trim()||'Ohne')===kat1Drill).forEach(r=>{
-            const k=val(r,'kat2').toString().trim()||'Ohne';
-            byKat2[k]=(byKat2[k]||0)+Math.abs(num(r,amtKey1));
+        const subKey=katKey==='kat1'?'kat2':'kat1';
+        const subLabel=katKey==='kat1'?'Kat2':'Kat1';
+        const backFn=drillVar==='kat1DrillA'?'kat1DrillA=null;updateKat1AusgabenChart();'
+            :drillVar==='kat1DrillE'?'kat1DrillE=null;updateKat1EinnahmenChart();'
+            :drillVar==='kat2DrillA'?'kat2DrillA=null;updateKat2AusgabenChart();'
+            :'kat2DrillE=null;updateKat2EinnahmenChart();';
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal} \u2013 nach ${subLabel} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="${backFn}">\u2190 zur\u00fcck</span>`;
+        const bySub={};
+        data.filter(r=>(val(r,katKey).toString().trim()||'Ohne')===drillVal).forEach(r=>{
+            const k=val(r,subKey).toString().trim()||'Ohne';
+            bySub[k]=(bySub[k]||0)+Math.abs(num(r,amtKey));
         });
-        const sorted=Object.entries(byKat2).sort((a,b)=>b[1]-a[1]);
-        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+        const sorted=Object.entries(bySub).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+        if(sorted.length===0) return;
+        charts[chartId]=new Chart(document.getElementById(canvasId),{
             type:'doughnut',
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
-                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},datalabels:dlConfig}}
         });
     }
+}
+
+function updateKat1AusgabenChart(){
+    buildKatDoughnut('kat1a','chart-kat1-ausgaben',chartData('kat1'),'kat1','ausgaben','kat1DrillA',kat1DrillA,'var(--accent-red)','Ausgaben');
+}
+function updateKat1EinnahmenChart(){
+    buildKatDoughnut('kat1e','chart-kat1-einnahmen',chartData('kat1'),'kat1','einnahmen','kat1DrillE',kat1DrillE,'var(--accent-green)','Einnahmen');
 }
 
 function updateKat1TimeChart(){
     destroyChart('kat1time');
     const data=chartData('kat1');
-    const amtKeyT1=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
     // Group by month and kat1
     const byMonthKat={};const katSet=new Set();
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,amtKeyT1));
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,'ausgaben'));
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1298,59 +1314,24 @@ function updateKat1TimeChart(){
     });
 }
 
-let kat2Drill=null;
+let kat2DrillA=null;
+let kat2DrillE=null;
 
-function updateKat2Chart(){
-    destroyChart('kat2');
-    const data=chartData('kat2');
-    const titleEl=document.getElementById('chart-kat2').closest('.chart-card').querySelector('.chart-title');
-    const amtKey2=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
-    const amtLabel2=summaryDrill==='einnahmen'?'Einnahmen':'Ausgaben';
-
-    if(!kat2Drill){
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${amtLabel2} nach Kat2`;
-        const byKat={};
-        data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey2));});
-        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
-        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
-            type:'doughnut',
-            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-                onClick:(evt,elems)=>{
-                    if(elems.length>0){kat2Drill=sorted[elems[0].index][0];updateKat2Chart();}
-                },
-                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
-                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
-        });
-    } else {
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${kat2Drill} \u2013 nach Kat1 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat2Drill=null;updateKat2Chart();">\u2190 zur\u00fcck</span>`;
-        const byKat1={};
-        data.filter(r=>(val(r,'kat2').toString().trim()||'Ohne')===kat2Drill).forEach(r=>{
-            const k=val(r,'kat1').toString().trim()||'Ohne';
-            byKat1[k]=(byKat1[k]||0)+Math.abs(num(r,amtKey2));
-        });
-        const sorted=Object.entries(byKat1).sort((a,b)=>b[1]-a[1]);
-        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
-            type:'doughnut',
-            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
-                    datalabels:{display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}}}}
-        });
-    }
+function updateKat2AusgabenChart(){
+    buildKatDoughnut('kat2a','chart-kat2-ausgaben',chartData('kat2'),'kat2','ausgaben','kat2DrillA',kat2DrillA,'var(--accent-red)','Ausgaben');
+}
+function updateKat2EinnahmenChart(){
+    buildKatDoughnut('kat2e','chart-kat2-einnahmen',chartData('kat2'),'kat2','einnahmen','kat2DrillE',kat2DrillE,'var(--accent-green)','Einnahmen');
 }
 
 function updateKat2TimeChart(){
     destroyChart('kat2time');
     const data=chartData('kat2');
-    const amtKeyT2=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
     const byMonthKat={};const katSet=new Set();
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat2').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,amtKeyT2));
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,'ausgaben'));
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1393,8 +1374,8 @@ function updateSaldoMonthlyChart(){
 function updateIncomeExpenseChart(){
     destroyChart('incomeExpense');
     const data=chartDataBoth();
-    const tE=data.reduce((s,r)=>s+num(r,'einnahmen'),0);
-    const tA=data.reduce((s,r)=>s+num(r,'ausgaben'),0);
+    const tE=data.reduce((s,r)=>s+Math.abs(num(r,'einnahmen')),0);
+    const tA=data.reduce((s,r)=>s+Math.abs(num(r,'ausgaben')),0);
     charts.incomeExpense=new Chart(document.getElementById('chart-income-expense'),{
         type:'doughnut',
         data:{labels:['Einnahmen','Ausgaben'],datasets:[{data:[tE,tA],backgroundColor:['#10b98188','#ef444488'],borderColor:['#10b981','#ef4444'],borderWidth:2,hoverOffset:6}]},
