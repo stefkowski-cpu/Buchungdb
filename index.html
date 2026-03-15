@@ -777,17 +777,26 @@ function buildSidebarFilters(){
     renderMonthTags();
     populateWeekFilter();
 
-    // Category selects
+    // Category selects (cascading: Kat1 -> Kat2 -> Kat0)
     if(COL_MAP.kat1!==null){document.getElementById('sf-kat1-group').style.display='';populateSelect('f-kat1',getUnique('kat1'));}
-    if(COL_MAP.kat2!==null){document.getElementById('sf-kat2-group').style.display='';populateSelect('f-kat2',getUnique('kat2'));}
-    if(COL_MAP.kat0!==null){document.getElementById('sf-kat0-group').style.display='';populateSelect('f-kat0',getUnique('kat0'));}
+    if(COL_MAP.kat2!==null){document.getElementById('sf-kat2-group').style.display='';populateCascadeKat2();}
+    if(COL_MAP.kat0!==null){document.getElementById('sf-kat0-group').style.display='';populateCascadeKat0();}
     if(COL_MAP.verkettet!==null){document.getElementById('sf-verkettet-group').style.display='';populateSelect('f-verkettet',getUnique('verkettet'));}
 
-    // Wire events
+    // Wire events - cascading category changes
     document.getElementById('tf-kw').addEventListener('change',applyAllFilters);
-    ['f-kat1','f-kat2','f-kat0','f-verkettet'].forEach(id=>{
-        const el=document.getElementById(id);if(el)el.addEventListener('change',applyAllFilters);
-    });
+    if(document.getElementById('f-kat1')){
+        document.getElementById('f-kat1').addEventListener('change',()=>{populateCascadeKat2();populateCascadeKat0();applyAllFilters();});
+    }
+    if(document.getElementById('f-kat2')){
+        document.getElementById('f-kat2').addEventListener('change',()=>{populateCascadeKat0();applyAllFilters();});
+    }
+    if(document.getElementById('f-kat0')){
+        document.getElementById('f-kat0').addEventListener('change',applyAllFilters);
+    }
+    if(document.getElementById('f-verkettet')){
+        document.getElementById('f-verkettet').addEventListener('change',applyAllFilters);
+    }
     ['f-empfaenger','f-betreff'].forEach(id=>{
         document.getElementById(id).addEventListener('input',debounce(applyAllFilters,300));
     });
@@ -849,6 +858,33 @@ function populateWeekFilter(){
     sel.innerHTML='<option value="">Alle</option>';
     [...ws].sort((a,b)=>a-b).forEach(w=>{sel.innerHTML+=`<option value="${w}">KW ${w}</option>`;});
     if([...ws].includes(parseInt(prev)))sel.value=prev;
+}
+
+// ---- Cascading Category Filters (Kat1 -> Kat2 -> Kat0) ----
+function populateCascadeKat2(){
+    if(COL_MAP.kat2===null) return;
+    const selKat1=gfv('f-kat1');
+    const set=new Set();
+    rawData.forEach(r=>{
+        if(selKat1 && val(r,'kat1').toString()!==selKat1) return;
+        const v=val(r,'kat2').toString().trim();
+        if(v) set.add(v);
+    });
+    populateSelect('f-kat2',[...set].sort());
+}
+
+function populateCascadeKat0(){
+    if(COL_MAP.kat0===null) return;
+    const selKat1=gfv('f-kat1');
+    const selKat2=gfv('f-kat2');
+    const set=new Set();
+    rawData.forEach(r=>{
+        if(selKat1 && val(r,'kat1').toString()!==selKat1) return;
+        if(selKat2 && val(r,'kat2').toString()!==selKat2) return;
+        const v=val(r,'kat0').toString().trim();
+        if(v) set.add(v);
+    });
+    populateSelect('f-kat0',[...set].sort());
 }
 
 // ---- Expense Analysis (auto-generated) ----
