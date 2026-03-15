@@ -220,6 +220,12 @@
         .exclude-tag.active {
             background: var(--tag-bg); color: var(--accent-blue); border-color: rgba(74,108,247,0.2);
         }
+        .exclude-tag.active[data-key="kat1"] {
+            color: var(--accent-purple); border-color: rgba(124,58,237,0.25);
+        }
+        .exclude-tag.active[data-key="kat2"] {
+            color: var(--accent-pink); border-color: rgba(236,72,153,0.25);
+        }
         .exclude-tag.excluded {
             background: var(--tag-exclude-bg); color: var(--accent-red);
             border-color: rgba(239,68,68,0.2); text-decoration: line-through;
@@ -323,7 +329,12 @@
         .kat-badge {
             display: inline-block; padding: 2px 8px; border-radius: 12px;
             font-size: 0.68rem; font-weight: 600;
-            background: var(--tag-bg); color: var(--accent-blue);
+        }
+        .kat-badge.kat1-badge {
+            background: rgba(124,58,237,0.12); color: var(--accent-purple);
+        }
+        .kat-badge.kat2-badge {
+            background: rgba(236,72,153,0.12); color: var(--accent-pink);
         }
         .pagination {
             display: flex; align-items: center; justify-content: space-between;
@@ -391,7 +402,8 @@
             tbody td { color: #333 !important; }
             td.amount-positive { color: #059669 !important; }
             td.amount-negative { color: #dc2626 !important; }
-            .kat-badge { background: #e8eeff !important; color: #3b5bdb !important; }
+            .kat-badge.kat1-badge { background: rgba(124,58,237,0.1) !important; color: #6d28d9 !important; }
+            .kat-badge.kat2-badge { background: rgba(236,72,153,0.1) !important; color: #db2777 !important; }
         }
         .print-only { display: none; }
 
@@ -1403,7 +1415,8 @@ function updateTable(){
         if(c==='einnahmen'){const n=num(r,'einnahmen');return`<td class="${n>0?'amount-positive':''}">${n>0?fmtCurrency(n):''}</td>`;}
         if(c==='ausgaben'){const n=num(r,'ausgaben');return`<td class="${n>0?'amount-negative':''}">${n>0?fmtCurrency(n):''}</td>`;}
         if(c==='ueberschuss'){const n=num(r,'ueberschuss');return`<td class="${n>=0?'amount-positive':'amount-negative'}">${fmtCurrency(n)}</td>`;}
-        if(c==='kat1'||c==='kat2'){const s=v.toString().trim();return s?`<td><span class="kat-badge">${s}</span></td>`:'<td></td>';}
+        if(c==='kat1'){const s=v.toString().trim();return s?`<td><span class="kat-badge kat1-badge">${s}</span></td>`:'<td></td>';}
+        if(c==='kat2'){const s=v.toString().trim();return s?`<td><span class="kat-badge kat2-badge">${s}</span></td>`:'<td></td>';}
         if(c==='betreff'){const s=v.toString();return`<td title="${s.replace(/"/g,'&quot;')}">${s.length>50?s.substring(0,48)+'...':s}</td>`;}
         return`<td>${v}</td>`;
     }).join('')+'</tr>').join('');
