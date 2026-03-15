@@ -188,6 +188,21 @@
         }
         .sf-group select option { background: var(--bg-card); }
 
+        /* Multi-select tags (Jahr/Monat) */
+        .multi-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .multi-tag {
+            display: inline-flex; align-items: center;
+            padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; user-select: none;
+            border: 1px solid var(--border); color: var(--text-muted);
+            background: transparent;
+        }
+        .multi-tag:hover { border-color: var(--accent-blue); color: var(--text-secondary); }
+        .multi-tag.selected {
+            background: var(--tag-bg); color: var(--accent-blue);
+            border-color: rgba(74,108,247,0.35); font-weight: 700;
+        }
+
         /* Exclusion tags */
         .exclude-section { margin-top: 6px; }
         .exclude-label {
@@ -207,6 +222,28 @@
         .exclude-tag.excluded {
             background: var(--tag-exclude-bg); color: var(--accent-red);
             border-color: rgba(239,68,68,0.2); text-decoration: line-through;
+        }
+
+        /* Expense analysis tags */
+        .analysis-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .analysis-tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 9px; border-radius: 12px; font-size: 0.66rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; user-select: none;
+            border: 1px solid var(--border); color: var(--text-secondary);
+            background: transparent;
+        }
+        .analysis-tag:hover { border-color: var(--accent-orange); }
+        .analysis-tag.selected {
+            background: rgba(245,158,11,0.12); color: var(--accent-orange);
+            border-color: rgba(245,158,11,0.35); font-weight: 700;
+        }
+        .analysis-tag .atag-count {
+            font-size: 0.58rem; background: var(--border); color: var(--text-muted);
+            padding: 0 5px; border-radius: 8px; font-weight: 700;
+        }
+        .analysis-tag.selected .atag-count {
+            background: rgba(245,158,11,0.2); color: var(--accent-orange);
         }
 
         /* Summary mini cards in sidebar */
@@ -426,11 +463,11 @@
                 <div class="sidebar-label">Zeitraum</div>
                 <div class="sf-group">
                     <label>Jahr</label>
-                    <select id="tf-year"><option value="">Alle</option></select>
+                    <div class="multi-tags" id="tf-years"></div>
                 </div>
                 <div class="sf-group">
                     <label>Monat</label>
-                    <select id="tf-month"><option value="">Alle</option></select>
+                    <div class="multi-tags" id="tf-months"></div>
                 </div>
                 <div class="sf-group">
                     <label>Kalenderwoche</label>
@@ -487,6 +524,19 @@
             <div class="sidebar-section" id="exclude-kat2-section" style="display:none">
                 <div class="sidebar-label">Kat2 Ausblenden</div>
                 <div class="exclude-tags" id="exclude-kat2-tags"></div>
+            </div>
+
+            <!-- Expense Analysis -->
+            <div class="sidebar-section" id="expense-analysis-section" style="display:none">
+                <div class="sidebar-label">Ausgaben-Analyse</div>
+                <div class="sf-group">
+                    <label>Betragsbereich</label>
+                    <div class="analysis-tags" id="expense-range-tags"></div>
+                </div>
+                <div class="sf-group" id="expense-top-section" style="display:none">
+                    <label>H&auml;ufigste Empf&auml;nger</label>
+                    <div class="analysis-tags" id="expense-top-tags"></div>
+                </div>
             </div>
 
             <!-- Reset -->
@@ -565,6 +615,11 @@ let rawData = [], filteredData = [], columns = [], charts = {};
 let currentPage = 1, sortCol = null, sortDir = 1;
 const pageSize = 25;
 let excludedKat1 = new Set(), excludedKat2 = new Set();
+let selectedYears = new Set(), selectedMonths = new Set();
+let expenseRanges = []; // auto-computed
+let selectedExpenseRanges = new Set();
+let topRecipients = []; // auto-computed
+let selectedTopRecipients = new Set();
 
 const COL_MAP = {
     datum:null, empfaenger:null, kat1:null, kat2:null,
@@ -621,8 +676,7 @@ function getISOWeek(d) {
 function fmtDate(d) { return d?d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}):''; }
 function fmtCurrency(n) { return n.toLocaleString('de-DE',{style:'currency',currency:'EUR'}); }
 function fmtShort(n) {
-    if(Math.abs(n)>=1000) return (n/1000).toFixed(1).replace('.',',')+'k\u00a0\u20ac';
-    return n.toFixed(0)+'\u00a0\u20ac';
+    return Math.round(n).toLocaleString('de-DE')+'\u00a0\u20ac';
 }
 function monthKey(d) { return d?(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')):'?'; }
 function monthLabel(key) {
@@ -677,6 +731,8 @@ function handleFile(file){
                 if(COL_MAP.datum!==null){row._date=parseDate(row[COL_MAP.datum]);row._week=getISOWeek(row._date);}
             });
             excludedKat1=new Set(); excludedKat2=new Set();
+            selectedYears=new Set(); selectedMonths=new Set();
+            selectedExpenseRanges=new Set(); selectedTopRecipients=new Set();
             initDashboard();
         }catch(err){alert('Fehler: '+err.message);}
         finally{document.getElementById('loading-overlay').classList.add('hidden');}
@@ -715,11 +771,10 @@ function populateSelect(id,values){
 }
 
 function buildSidebarFilters(){
-    // Year
+    // Year tags
     const years=[...new Set(rawData.map(r=>r._date?r._date.getFullYear():null).filter(Boolean))].sort((a,b)=>b-a);
-    populateSelect('tf-year',years);
-
-    populateMonthFilter();
+    renderYearTags(years);
+    renderMonthTags();
     populateWeekFilter();
 
     // Category selects
@@ -729,10 +784,7 @@ function buildSidebarFilters(){
     if(COL_MAP.verkettet!==null){document.getElementById('sf-verkettet-group').style.display='';populateSelect('f-verkettet',getUnique('verkettet'));}
 
     // Wire events
-    document.getElementById('tf-year').addEventListener('change',()=>{populateMonthFilter();populateWeekFilter();applyAllFilters();});
-    document.getElementById('tf-month').addEventListener('change',()=>{populateWeekFilter();applyAllFilters();});
     document.getElementById('tf-kw').addEventListener('change',applyAllFilters);
-
     ['f-kat1','f-kat2','f-kat0','f-verkettet'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.addEventListener('change',applyAllFilters);
     });
@@ -742,25 +794,54 @@ function buildSidebarFilters(){
     ['f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         document.getElementById(id).addEventListener('input',debounce(applyAllFilters,300));
     });
+
+    // Expense analysis
+    buildExpenseAnalysis();
 }
 
-function populateMonthFilter(){
-    const sy=gfv('tf-year');
+// ---- Multi-select Year/Month ----
+function renderYearTags(years){
+    if(!years) years=[...new Set(rawData.map(r=>r._date?r._date.getFullYear():null).filter(Boolean))].sort((a,b)=>b-a);
+    const container=document.getElementById('tf-years');
+    container.innerHTML=years.map(y=>
+        `<span class="multi-tag ${selectedYears.has(y)?'selected':''}" onclick="toggleYear(${y})">${y}</span>`
+    ).join('');
+}
+function toggleYear(y){
+    if(selectedYears.has(y)) selectedYears.delete(y); else selectedYears.add(y);
+    renderYearTags();
+    renderMonthTags();
+    populateWeekFilter();
+    applyAllFilters();
+}
+
+function renderMonthTags(){
     const ms=new Set();
-    rawData.forEach(r=>{if(r._date){if(!sy||r._date.getFullYear()===parseInt(sy))ms.add(r._date.getMonth());}});
-    const sel=document.getElementById('tf-month');const prev=sel.value;
-    sel.innerHTML='<option value="">Alle</option>';
-    [...ms].sort((a,b)=>a-b).forEach(m=>{sel.innerHTML+=`<option value="${m}">${MONTH_NAMES[m]}</option>`;});
-    if([...ms].includes(parseInt(prev)))sel.value=prev;
+    rawData.forEach(r=>{
+        if(r._date){
+            if(selectedYears.size===0||selectedYears.has(r._date.getFullYear()))
+                ms.add(r._date.getMonth());
+        }
+    });
+    const container=document.getElementById('tf-months');
+    const MSHORT=['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    container.innerHTML=[...ms].sort((a,b)=>a-b).map(m=>
+        `<span class="multi-tag ${selectedMonths.has(m)?'selected':''}" onclick="toggleMonth(${m})">${MSHORT[m]}</span>`
+    ).join('');
+}
+function toggleMonth(m){
+    if(selectedMonths.has(m)) selectedMonths.delete(m); else selectedMonths.add(m);
+    renderMonthTags();
+    populateWeekFilter();
+    applyAllFilters();
 }
 
 function populateWeekFilter(){
-    const sy=gfv('tf-year'),sm=gfv('tf-month');
     const ws=new Set();
     rawData.forEach(r=>{
         if(r._date&&r._week){
-            if(sy&&r._date.getFullYear()!==parseInt(sy))return;
-            if(sm!==''&&sm&&r._date.getMonth()!==parseInt(sm))return;
+            if(selectedYears.size>0&&!selectedYears.has(r._date.getFullYear()))return;
+            if(selectedMonths.size>0&&!selectedMonths.has(r._date.getMonth()))return;
             ws.add(r._week);
         }
     });
@@ -768,6 +849,75 @@ function populateWeekFilter(){
     sel.innerHTML='<option value="">Alle</option>';
     [...ws].sort((a,b)=>a-b).forEach(w=>{sel.innerHTML+=`<option value="${w}">KW ${w}</option>`;});
     if([...ws].includes(parseInt(prev)))sel.value=prev;
+}
+
+// ---- Expense Analysis (auto-generated) ----
+function buildExpenseAnalysis(){
+    const section=document.getElementById('expense-analysis-section');
+    section.style.display='';
+
+    // Compute smart ranges based on data distribution
+    const amounts=rawData.map(r=>num(r,'ausgaben')).filter(a=>a>0).sort((a,b)=>a-b);
+    if(amounts.length===0){section.style.display='none';return;}
+
+    const max=amounts[amounts.length-1];
+    const thresholds=[0,5,10,25,50,100,250,500,1000,2500,5000,10000];
+    expenseRanges=[];
+    for(let i=0;i<thresholds.length;i++){
+        const lo=thresholds[i];
+        const hi=i<thresholds.length-1?thresholds[i+1]:Infinity;
+        if(lo>max*1.5)break;
+        const count=amounts.filter(a=>a>lo&&a<=hi).length;
+        if(count>0){
+            const label=hi===Infinity?`>${lo}\u00a0\u20ac`:`${lo}\u2013${hi}\u00a0\u20ac`;
+            expenseRanges.push({lo,hi,label,count});
+        }
+    }
+    renderExpenseRangeTags();
+
+    // Top recipients by frequency
+    if(COL_MAP.empfaenger!==null){
+        const freq={};
+        rawData.forEach(r=>{
+            const e=val(r,'empfaenger').toString().trim();
+            if(e){
+                if(!freq[e])freq[e]={count:0,total:0};
+                freq[e].count++;
+                freq[e].total+=num(r,'ausgaben');
+            }
+        });
+        topRecipients=Object.entries(freq)
+            .sort((a,b)=>b[1].total-a[1].total)
+            .slice(0,12)
+            .map(([name,d])=>({name,count:d.count,total:d.total}));
+        if(topRecipients.length>0){
+            document.getElementById('expense-top-section').style.display='';
+            renderTopRecipientTags();
+        }
+    }
+}
+
+function renderExpenseRangeTags(){
+    document.getElementById('expense-range-tags').innerHTML=expenseRanges.map((r,i)=>
+        `<span class="analysis-tag ${selectedExpenseRanges.has(i)?'selected':''}" onclick="toggleExpenseRange(${i})">${r.label} <span class="atag-count">${r.count}</span></span>`
+    ).join('');
+}
+function toggleExpenseRange(i){
+    if(selectedExpenseRanges.has(i)) selectedExpenseRanges.delete(i); else selectedExpenseRanges.add(i);
+    renderExpenseRangeTags();
+    applyAllFilters();
+}
+
+function renderTopRecipientTags(){
+    document.getElementById('expense-top-tags').innerHTML=topRecipients.map((r,i)=>{
+        const short=r.name.length>22?r.name.substring(0,20)+'...':r.name;
+        return`<span class="analysis-tag ${selectedTopRecipients.has(i)?'selected':''}" onclick="toggleTopRecipient(${i})" title="${r.name}">${short} <span class="atag-count">${r.count}x</span></span>`;
+    }).join('');
+}
+function toggleTopRecipient(i){
+    if(selectedTopRecipients.has(i)) selectedTopRecipients.delete(i); else selectedTopRecipients.add(i);
+    renderTopRecipientTags();
+    applyAllFilters();
 }
 
 // ---- Exclusion Tags ----
@@ -801,12 +951,25 @@ function toggleExclusion(key,value){
 
 // ---- Apply Filters ----
 function applyAllFilters(){
-    const ty=gfv('tf-year'),tm=gfv('tf-month'),tw=gfv('tf-kw');
+    const tw=gfv('tf-kw');
+
+    // Build set of allowed expense ranges if any selected
+    let allowedRanges=null;
+    if(selectedExpenseRanges.size>0){
+        allowedRanges=[...selectedExpenseRanges].map(i=>expenseRanges[i]);
+    }
+    // Build set of allowed recipients if any selected
+    let allowedRecipients=null;
+    if(selectedTopRecipients.size>0){
+        allowedRecipients=new Set([...selectedTopRecipients].map(i=>topRecipients[i].name));
+    }
 
     filteredData=rawData.filter(row=>{
         const d=row._date;
-        if(ty&&d&&d.getFullYear()!==parseInt(ty))return false;
-        if(tm!==''&&tm&&d&&d.getMonth()!==parseInt(tm))return false;
+        // Multi-select year
+        if(selectedYears.size>0&&d&&!selectedYears.has(d.getFullYear()))return false;
+        // Multi-select month
+        if(selectedMonths.size>0&&d&&!selectedMonths.has(d.getMonth()))return false;
         if(tw&&row._week!==parseInt(tw))return false;
 
         const emp=gfv('f-empfaenger');
@@ -818,12 +981,22 @@ function applyAllFilters(){
         const minA=gfv('f-min-ausgaben'); if(minA&&num(row,'ausgaben')<parseFloat(minA))return false;
         const maxA=gfv('f-max-ausgaben'); if(maxA&&num(row,'ausgaben')>parseFloat(maxA))return false;
         const bt=gfv('f-betreff'); if(bt&&!val(row,'betreff').toString().toLowerCase().includes(bt.toLowerCase()))return false;
+
+        // Expense range filter
+        if(allowedRanges){
+            const a=num(row,'ausgaben');
+            if(!allowedRanges.some(r=>a>r.lo&&a<=r.hi))return false;
+        }
+        // Top recipient filter
+        if(allowedRecipients){
+            if(!allowedRecipients.has(val(row,'empfaenger').toString().trim()))return false;
+        }
         return true;
     });
 
     let cnt=0;
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{if(gfv(id))cnt++;});
-    cnt+=excludedKat1.size+excludedKat2.size;
+    cnt+=excludedKat1.size+excludedKat2.size+selectedExpenseRanges.size+selectedTopRecipients.size;
     document.getElementById('active-filter-count').textContent=cnt;
 
     currentPage=1;
@@ -833,15 +1006,17 @@ function applyAllFilters(){
 }
 
 function resetAllFilters(){
-    document.getElementById('tf-year').value='';
-    populateMonthFilter(); populateWeekFilter();
-    document.getElementById('tf-month').value='';
+    selectedYears.clear(); selectedMonths.clear();
+    renderYearTags(); renderMonthTags();
+    populateWeekFilter();
     document.getElementById('tf-kw').value='';
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
     excludedKat1.clear(); excludedKat2.clear();
     renderExclusionTags('kat1'); renderExclusionTags('kat2');
+    selectedExpenseRanges.clear(); selectedTopRecipients.clear();
+    renderExpenseRangeTags(); if(topRecipients.length>0)renderTopRecipientTags();
     applyAllFilters();
 }
 
@@ -897,23 +1072,69 @@ function updateCharts(){
     updateIncomeExpenseChart();
 }
 
+// Drill-down state
+let monthlyDrill=null; // null=overview, 'einnahmen'/'ausgaben'=zoomed
+
 function updateMonthlyChart(){
     destroyChart('monthly');
     const data=chartDataBoth();
     const byMonth={};
     data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]={e:0,a:0};byMonth[mk].e+=num(r,'einnahmen');byMonth[mk].a+=num(r,'ausgaben');});
     const keys=Object.keys(byMonth).sort();
-    charts.monthly=new Chart(document.getElementById('chart-monthly'),{
-        type:'bar',
-        data:{labels:keys.map(monthLabel),datasets:[
-            {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
-            {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
-        ]},
-        options:{responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10}}}},
-            scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}
-        }
-    });
+
+    const titleEl=document.getElementById('chart-monthly').closest('.chart-card').querySelector('.chart-title');
+
+    if(!monthlyDrill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-blue)"></span>Einnahmen &amp; Ausgaben pro Monat';
+        charts.monthly=new Chart(document.getElementById('chart-monthly'),{
+            type:'bar',
+            data:{labels:keys.map(monthLabel),datasets:[
+                {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
+                {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
+            ]},
+            options:{responsive:true,maintainAspectRatio:false,
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){
+                        monthlyDrill=elems[0].datasetIndex===0?'einnahmen':'ausgaben';
+                        updateMonthlyChart();
+                    }
+                },
+                plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:12,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{grid:{display:false}}}
+            }
+        });
+    } else {
+        // Drilled into Einnahmen or Ausgaben by Kat1
+        const isE=monthlyDrill==='einnahmen';
+        const label=isE?'Einnahmen':'Ausgaben';
+        const color=isE?'#10b981':'#ef4444';
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} nach Kat1 pro Monat <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill=null;updateMonthlyChart();">\u2190 zur\u00fcck</span>`;
+
+        const byMonthKat={};const katSet=new Set();
+        data.forEach(r=>{
+            const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
+            if(!byMonthKat[mk])byMonthKat[mk]={};
+            const amount=isE?num(r,'einnahmen'):num(r,'ausgaben');
+            byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+amount;
+            katSet.add(k);
+        });
+        const katTotals={};katSet.forEach(k=>{katTotals[k]=0;});
+        Object.values(byMonthKat).forEach(m=>{for(const[k,v]of Object.entries(m))katTotals[k]+=v;});
+        const topKats=Object.entries(katTotals).sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0]);
+
+        const datasets=topKats.map((k,i)=>({
+            label:k,data:keys.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
+            backgroundColor:COLORS[i%COLORS.length]+'88',borderColor:COLORS[i%COLORS.length],borderWidth:1,borderRadius:3,
+        }));
+        charts.monthly=new Chart(document.getElementById('chart-monthly'),{
+            type:'bar',data:{labels:keys.map(monthLabel),datasets},
+            options:{responsive:true,maintainAspectRatio:false,
+                plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:9}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmtCurrency(ctx.raw)}}},
+                scales:{y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:gc()}},x:{stacked:true,grid:{display:false}}}}
+        });
+    }
 }
 
 function updateCumulativeChart(){
@@ -929,19 +1150,44 @@ function updateCumulativeChart(){
     });
 }
 
+let kat1Drill=null; // null=all, string=specific category
+
 function updateKat1Chart(){
     destroyChart('kat1');
     const data=chartData('kat1');
-    const byKat={};
-    data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
-    const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
-    charts.kat1=new Chart(document.getElementById('chart-kat1'),{
-        type:'doughnut',
-        data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-        options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-            plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
-    });
+    const titleEl=document.getElementById('chart-kat1').closest('.chart-card').querySelector('.chart-title');
+
+    if(!kat1Drill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-purple)"></span>Ausgaben nach Kat1';
+        const byKat={};
+        data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
+        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){kat1Drill=sorted[elems[0].index][0];updateKat1Chart();}
+                },
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    } else {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${kat1Drill} \u2013 nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat1Drill=null;updateKat1Chart();">\u2190 zur\u00fcck</span>`;
+        const byKat2={};
+        data.filter(r=>(val(r,'kat1').toString().trim()||'Ohne')===kat1Drill).forEach(r=>{
+            const k=val(r,'kat2').toString().trim()||'Ohne';
+            byKat2[k]=(byKat2[k]||0)+num(r,'ausgaben');
+        });
+        const sorted=Object.entries(byKat2).sort((a,b)=>b[1]-a[1]);
+        charts.kat1=new Chart(document.getElementById('chart-kat1'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    }
 }
 
 function updateKat1TimeChart(){
@@ -974,19 +1220,44 @@ function updateKat1TimeChart(){
     });
 }
 
+let kat2Drill=null;
+
 function updateKat2Chart(){
     destroyChart('kat2');
     const data=chartData('kat2');
-    const byKat={};
-    data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
-    const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
-    charts.kat2=new Chart(document.getElementById('chart-kat2'),{
-        type:'doughnut',
-        data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-        options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-            plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
-                tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
-    });
+    const titleEl=document.getElementById('chart-kat2').closest('.chart-card').querySelector('.chart-title');
+
+    if(!kat2Drill){
+        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-pink)"></span>Ausgaben nach Kat2';
+        const byKat={};
+        data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
+        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                onClick:(evt,elems)=>{
+                    if(elems.length>0){kat2Drill=sorted[elems[0].index][0];updateKat2Chart();}
+                },
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    } else {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${kat2Drill} \u2013 nach Kat1 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="kat2Drill=null;updateKat2Chart();">\u2190 zur\u00fcck</span>`;
+        const byKat1={};
+        data.filter(r=>(val(r,'kat2').toString().trim()||'Ohne')===kat2Drill).forEach(r=>{
+            const k=val(r,'kat1').toString().trim()||'Ohne';
+            byKat1[k]=(byKat1[k]||0)+num(r,'ausgaben');
+        });
+        const sorted=Object.entries(byKat1).sort((a,b)=>b[1]-a[1]);
+        charts.kat2=new Chart(document.getElementById('chart-kat2'),{
+            type:'doughnut',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
+                    tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}}}}
+        });
+    }
 }
 
 function updateKat2TimeChart(){
