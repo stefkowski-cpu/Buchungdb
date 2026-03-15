@@ -513,6 +513,12 @@
                 </div>
             </div>
 
+            <!-- Kat0 Exclusion -->
+            <div class="sidebar-section" id="exclude-kat0-section" style="display:none">
+                <div class="sidebar-label">Kat 0 Ausblenden</div>
+                <div class="exclude-tags" id="exclude-kat0-tags"></div>
+            </div>
+
             <!-- Kat1 Exclusion -->
             <div class="sidebar-section" id="exclude-kat1-section" style="display:none">
                 <div class="sidebar-label">Kat1 Ausblenden</div>
@@ -625,7 +631,7 @@
 let rawData = [], filteredData = [], columns = [], charts = {};
 let currentPage = 1, sortCol = null, sortDir = 1;
 const pageSize = 25;
-let excludedKat1 = new Set(), excludedKat2 = new Set();
+let excludedKat0 = new Set(), excludedKat1 = new Set(), excludedKat2 = new Set();
 let selectedYears = new Set(), selectedMonths = new Set();
 let expenseRanges = []; // auto-computed
 let selectedExpenseRanges = new Set();
@@ -741,7 +747,7 @@ function handleFile(file){
             rawData.forEach(row=>{
                 if(COL_MAP.datum!==null){row._date=parseDate(row[COL_MAP.datum]);row._week=getISOWeek(row._date);}
             });
-            excludedKat1=new Set(); excludedKat2=new Set();
+            excludedKat0=new Set(); excludedKat1=new Set(); excludedKat2=new Set();
             selectedYears=new Set(); selectedMonths=new Set();
             selectedExpenseRanges=new Set(); selectedTopRecipients=new Set();
             initDashboard();
@@ -969,12 +975,22 @@ function toggleTopRecipient(i){
 
 // ---- Exclusion Tags ----
 function buildExclusionTags(){
+    if(COL_MAP.kat0!==null){
+        document.getElementById('exclude-kat0-section').style.display='';
+        renderExclusionTags('kat0');
+    }
     if(COL_MAP.kat1!==null){
         document.getElementById('exclude-kat1-section').style.display='';
+        // Default exclusions: Umschichtung, Haus
+        const kat1Vals=getUnique('kat1');
+        ['Umschichtung','Haus'].forEach(v=>{if(kat1Vals.includes(v))excludedKat1.add(v);});
         renderExclusionTags('kat1');
     }
     if(COL_MAP.kat2!==null){
         document.getElementById('exclude-kat2-section').style.display='';
+        // Default exclusion: Umschichtung
+        const kat2Vals=getUnique('kat2');
+        if(kat2Vals.includes('Umschichtung'))excludedKat2.add('Umschichtung');
         renderExclusionTags('kat2');
     }
 }
@@ -982,7 +998,7 @@ function buildExclusionTags(){
 function renderExclusionTags(key){
     const container=document.getElementById(`exclude-${key}-tags`);
     const values=getUnique(key);
-    const excluded=key==='kat1'?excludedKat1:excludedKat2;
+    const excluded=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
     container.innerHTML=values.map(v=>{
         const isExcl=excluded.has(v);
         const col=getKatColor(v);
@@ -992,7 +1008,7 @@ function renderExclusionTags(key){
 }
 
 function toggleExclusion(key,value){
-    const set=key==='kat1'?excludedKat1:excludedKat2;
+    const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
     if(set.has(value)) set.delete(value); else set.add(value);
     renderExclusionTags(key);
     applyAllFilters();
@@ -1045,7 +1061,7 @@ function applyAllFilters(){
 
     let cnt=0;
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{if(gfv(id))cnt++;});
-    cnt+=excludedKat1.size+excludedKat2.size+selectedExpenseRanges.size+selectedTopRecipients.size;
+    cnt+=excludedKat0.size+excludedKat1.size+excludedKat2.size+selectedExpenseRanges.size+selectedTopRecipients.size;
     document.getElementById('active-filter-count').textContent=cnt;
 
     currentPage=1;
@@ -1062,7 +1078,8 @@ function resetAllFilters(){
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
-    excludedKat1.clear(); excludedKat2.clear();
+    excludedKat0.clear(); excludedKat1.clear(); excludedKat2.clear();
+    if(COL_MAP.kat0!==null) renderExclusionTags('kat0');
     renderExclusionTags('kat1'); renderExclusionTags('kat2');
     selectedExpenseRanges.clear(); selectedTopRecipients.clear();
     renderExpenseRangeTags(); if(topRecipients.length>0)renderTopRecipientTags();
@@ -1117,12 +1134,15 @@ function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];
 
 // Helper: filter data excluding certain categories for chart display
 function chartData(exclKey){
-    const excluded=exclKey==='kat1'?excludedKat1:excludedKat2;
-    if(excluded.size===0) return filteredData;
-    return filteredData.filter(r=>!excluded.has(val(r,exclKey).toString().trim()));
+    const excluded=exclKey==='kat0'?excludedKat0:exclKey==='kat1'?excludedKat1:excludedKat2;
+    let data=filteredData;
+    if(excludedKat0.size>0&&exclKey!=='kat0') data=data.filter(r=>!excludedKat0.has(val(r,'kat0').toString().trim()));
+    if(excluded.size>0) data=data.filter(r=>!excluded.has(val(r,exclKey).toString().trim()));
+    return data;
 }
 function chartDataBoth(){
     let data=filteredData;
+    if(excludedKat0.size>0) data=data.filter(r=>!excludedKat0.has(val(r,'kat0').toString().trim()));
     if(excludedKat1.size>0) data=data.filter(r=>!excludedKat1.has(val(r,'kat1').toString().trim()));
     if(excludedKat2.size>0) data=data.filter(r=>!excludedKat2.has(val(r,'kat2').toString().trim()));
     return data;
