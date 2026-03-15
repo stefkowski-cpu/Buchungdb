@@ -218,13 +218,7 @@
             border: 1px solid transparent;
         }
         .exclude-tag.active {
-            background: var(--tag-bg); color: var(--accent-blue); border-color: rgba(74,108,247,0.2);
-        }
-        .exclude-tag.active[data-key="kat1"] {
-            color: var(--accent-purple); border-color: rgba(124,58,237,0.25);
-        }
-        .exclude-tag.active[data-key="kat2"] {
-            color: var(--accent-pink); border-color: rgba(236,72,153,0.25);
+            background: var(--tag-bg); border-color: rgba(74,108,247,0.2);
         }
         .exclude-tag.excluded {
             background: var(--tag-exclude-bg); color: var(--accent-red);
@@ -260,6 +254,9 @@
             border-radius: var(--radius-sm); padding: 10px;
             transition: all 0.2s;
         }
+        .smini-clickable { cursor: pointer; }
+        .smini-clickable:hover { border-color: var(--accent-blue); transform: translateY(-1px); }
+        .smini-active { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(74,108,247,0.25); }
         .smini-label { font-size: 0.62rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .smini-value { font-size: 1.05rem; font-weight: 800; letter-spacing: -0.3px; }
         .smini-value.positive { color: var(--accent-green); }
@@ -330,12 +327,6 @@
             display: inline-block; padding: 2px 8px; border-radius: 12px;
             font-size: 0.68rem; font-weight: 600;
         }
-        .kat-badge.kat1-badge {
-            background: rgba(124,58,237,0.12); color: var(--accent-purple);
-        }
-        .kat-badge.kat2-badge {
-            background: rgba(236,72,153,0.12); color: var(--accent-pink);
-        }
         .pagination {
             display: flex; align-items: center; justify-content: space-between;
             padding: 10px 18px; border-top: 1px solid var(--border);
@@ -402,8 +393,6 @@
             tbody td { color: #333 !important; }
             td.amount-positive { color: #059669 !important; }
             td.amount-negative { color: #dc2626 !important; }
-            .kat-badge.kat1-badge { background: rgba(124,58,237,0.1) !important; color: #6d28d9 !important; }
-            .kat-badge.kat2-badge { background: rgba(236,72,153,0.1) !important; color: #db2777 !important; }
         }
         .print-only { display: none; }
 
@@ -987,7 +976,9 @@ function renderExclusionTags(key){
     const excluded=key==='kat1'?excludedKat1:excludedKat2;
     container.innerHTML=values.map(v=>{
         const isExcl=excluded.has(v);
-        return `<span class="exclude-tag ${isExcl?'excluded':'active'}" data-key="${key}" data-val="${v}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')">${v}</span>`;
+        const col=getKatColor(v);
+        const style=isExcl?'':`border-color:${col}33;color:${col};`;
+        return `<span class="exclude-tag ${isExcl?'excluded':'active'}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')">${v}</span>`;
     }).join('');
 }
 
@@ -1055,6 +1046,7 @@ function applyAllFilters(){
 }
 
 function resetAllFilters(){
+    summaryDrill=null;
     selectedYears.clear(); selectedMonths.clear();
     renderYearTags(); renderMonthTags();
     populateWeekFilter();
@@ -1070,21 +1062,46 @@ function resetAllFilters(){
 }
 
 // ---- Summary ----
+let summaryDrill=null; // null=all, 'einnahmen'/'ausgaben'
+
+function toggleSummaryDrill(type){
+    summaryDrill=summaryDrill===type?null:type;
+    updateSummary();
+    updateCharts();
+}
+
 function updateSummary(){
-    const tE=filteredData.reduce((s,r)=>s+num(r,'einnahmen'),0);
-    const tA=filteredData.reduce((s,r)=>s+num(r,'ausgaben'),0);
+    let tE=0, tA=0;
+    filteredData.forEach(r=>{
+        const e=num(r,'einnahmen'), a=num(r,'ausgaben');
+        tE+=Math.abs(e);
+        tA+=Math.abs(a);
+    });
     const saldo=tE-tA;
     const cnt=filteredData.length;
+    const eActive=summaryDrill==='einnahmen'?' smini-active':'';
+    const aActive=summaryDrill==='ausgaben'?' smini-active':'';
     document.getElementById('summary-mini').innerHTML=`
         <div class="smini"><div class="smini-label">Buchungen</div><div class="smini-value">${cnt.toLocaleString('de-DE')}</div></div>
         <div class="smini"><div class="smini-label">Saldo</div><div class="smini-value ${saldo>=0?'positive':'negative'}">${fmtShort(saldo)}</div></div>
-        <div class="smini"><div class="smini-label">Einnahmen</div><div class="smini-value positive">${fmtShort(tE)}</div></div>
-        <div class="smini"><div class="smini-label">Ausgaben</div><div class="smini-value negative">${fmtShort(tA)}</div></div>
+        <div class="smini smini-clickable${eActive}" onclick="toggleSummaryDrill('einnahmen')"><div class="smini-label">Einnahmen</div><div class="smini-value positive">${fmtShort(tE)}</div></div>
+        <div class="smini smini-clickable${aActive}" onclick="toggleSummaryDrill('ausgaben')"><div class="smini-label">Ausgaben</div><div class="smini-value negative">${fmtShort(tA)}</div></div>
     `;
 }
 
-// ---- Charts ----
+// ---- Category Color Map ----
 const COLORS=['#4a6cf7','#7c3aed','#ec4899','#10b981','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#14b8a6','#f97316','#6366f1','#d946ef','#0ea5e9','#22c55e','#eab308','#e11d48','#2dd4bf','#a855f7','#fb923c','#64748b'];
+const katColorMap={};
+function getKatColor(value){
+    if(!value) return COLORS[0];
+    if(!katColorMap[value]){
+        const idx=Object.keys(katColorMap).length % COLORS.length;
+        katColorMap[value]=COLORS[idx];
+    }
+    return katColorMap[value];
+}
+
+// ---- Charts ----
 
 Chart.register(ChartDataLabels);
 Chart.defaults.plugins.datalabels={display:false}; // off by default
@@ -1114,6 +1131,8 @@ function chartDataBoth(){
 
 function updateCharts(){
     chartDefaults();
+    // If summary drill is active, set monthly drill accordingly
+    if(summaryDrill) monthlyDrill=summaryDrill;
     updateMonthlyChart();
     updateCumulativeChart();
     updateKat1Chart();
@@ -1211,10 +1230,12 @@ function updateKat1Chart(){
     const data=chartData('kat1');
     const titleEl=document.getElementById('chart-kat1').closest('.chart-card').querySelector('.chart-title');
 
+    const amtKey1=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
+    const amtLabel1=summaryDrill==='einnahmen'?'Einnahmen':'Ausgaben';
     if(!kat1Drill){
-        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-purple)"></span>Ausgaben nach Kat1';
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-purple)"></span>${amtLabel1} nach Kat1`;
         const byKat={};
-        data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        data.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey1));});
         const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]);
         charts.kat1=new Chart(document.getElementById('chart-kat1'),{
             type:'doughnut',
@@ -1232,7 +1253,7 @@ function updateKat1Chart(){
         const byKat2={};
         data.filter(r=>(val(r,'kat1').toString().trim()||'Ohne')===kat1Drill).forEach(r=>{
             const k=val(r,'kat2').toString().trim()||'Ohne';
-            byKat2[k]=(byKat2[k]||0)+num(r,'ausgaben');
+            byKat2[k]=(byKat2[k]||0)+Math.abs(num(r,amtKey1));
         });
         const sorted=Object.entries(byKat2).sort((a,b)=>b[1]-a[1]);
         charts.kat1=new Chart(document.getElementById('chart-kat1'),{
@@ -1249,12 +1270,13 @@ function updateKat1Chart(){
 function updateKat1TimeChart(){
     destroyChart('kat1time');
     const data=chartData('kat1');
+    const amtKeyT1=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
     // Group by month and kat1
     const byMonthKat={};const katSet=new Set();
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+num(r,'ausgaben');
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,amtKeyT1));
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1282,11 +1304,13 @@ function updateKat2Chart(){
     destroyChart('kat2');
     const data=chartData('kat2');
     const titleEl=document.getElementById('chart-kat2').closest('.chart-card').querySelector('.chart-title');
+    const amtKey2=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
+    const amtLabel2=summaryDrill==='einnahmen'?'Einnahmen':'Ausgaben';
 
     if(!kat2Drill){
-        titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-pink)"></span>Ausgaben nach Kat2';
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:var(--accent-pink)"></span>${amtLabel2} nach Kat2`;
         const byKat={};
-        data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+num(r,'ausgaben');});
+        data.forEach(r=>{const k=val(r,'kat2').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey2));});
         const sorted=Object.entries(byKat).sort((a,b)=>b[1]-a[1]).slice(0,14);
         charts.kat2=new Chart(document.getElementById('chart-kat2'),{
             type:'doughnut',
@@ -1304,7 +1328,7 @@ function updateKat2Chart(){
         const byKat1={};
         data.filter(r=>(val(r,'kat2').toString().trim()||'Ohne')===kat2Drill).forEach(r=>{
             const k=val(r,'kat1').toString().trim()||'Ohne';
-            byKat1[k]=(byKat1[k]||0)+num(r,'ausgaben');
+            byKat1[k]=(byKat1[k]||0)+Math.abs(num(r,amtKey2));
         });
         const sorted=Object.entries(byKat1).sort((a,b)=>b[1]-a[1]);
         charts.kat2=new Chart(document.getElementById('chart-kat2'),{
@@ -1321,11 +1345,12 @@ function updateKat2Chart(){
 function updateKat2TimeChart(){
     destroyChart('kat2time');
     const data=chartData('kat2');
+    const amtKeyT2=summaryDrill==='einnahmen'?'einnahmen':'ausgaben';
     const byMonthKat={};const katSet=new Set();
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat2').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+num(r,'ausgaben');
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,amtKeyT2));
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1415,8 +1440,7 @@ function updateTable(){
         if(c==='einnahmen'){const n=num(r,'einnahmen');return`<td class="${n>0?'amount-positive':''}">${n>0?fmtCurrency(n):''}</td>`;}
         if(c==='ausgaben'){const n=num(r,'ausgaben');return`<td class="${n>0?'amount-negative':''}">${n>0?fmtCurrency(n):''}</td>`;}
         if(c==='ueberschuss'){const n=num(r,'ueberschuss');return`<td class="${n>=0?'amount-positive':'amount-negative'}">${fmtCurrency(n)}</td>`;}
-        if(c==='kat1'){const s=v.toString().trim();return s?`<td><span class="kat-badge kat1-badge">${s}</span></td>`:'<td></td>';}
-        if(c==='kat2'){const s=v.toString().trim();return s?`<td><span class="kat-badge kat2-badge">${s}</span></td>`:'<td></td>';}
+        if(c==='kat1'||c==='kat2'){const s=v.toString().trim();if(!s)return'<td></td>';const col=getKatColor(s);return`<td><span class="kat-badge" style="background:${col}18;color:${col}">${s}</span></td>`;}
         if(c==='betreff'){const s=v.toString();return`<td title="${s.replace(/"/g,'&quot;')}">${s.length>50?s.substring(0,48)+'...':s}</td>`;}
         return`<td>${v}</td>`;
     }).join('')+'</tr>').join('');
