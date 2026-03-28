@@ -286,6 +286,9 @@
         .chart-container.tall { height: 340px; }
         .chart-container.short { height: 200px; }
 
+        .drill-detail { position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;padding:0.25rem; }
+        .drill-detail table th { position:sticky;top:0;background:var(--bg-card);z-index:1; }
+
         /* Table */
         .table-card {
             background: var(--bg-card); border: 1px solid var(--border);
@@ -1087,6 +1090,7 @@ function resetAllFilters(){
     renderYearTags(); renderMonthTags();
     populateWeekFilter();
     document.getElementById('tf-kw').value='';
+    monthlyDrill=null;kat1DrillA=null;kat1DrillE=null;kat2DrillA=null;kat2DrillE=null;
     ['f-kat1','f-kat2','f-kat0','f-verkettet','f-empfaenger','f-betreff','f-min-ausgaben','f-max-ausgaben'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.value='';
     });
@@ -1144,7 +1148,18 @@ function chartDefaults(){
     Chart.defaults.font.size=11;
 }
 function gc(){return getTheme()==='dark'?'rgba(42,42,74,0.3)':'rgba(0,0,0,0.06)';}
-function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+function destroyChart(id){
+    if(charts[id]){charts[id].destroy();delete charts[id];}
+    // Clean up drill-detail view and restore canvas
+    const canvasMap={kat1a:'chart-kat1-ausgaben',kat1e:'chart-kat1-einnahmen',kat2a:'chart-kat2-ausgaben',kat2e:'chart-kat2-einnahmen'};
+    const cid=canvasMap[id];
+    if(cid){
+        const canvas=document.getElementById(cid);
+        if(canvas){canvas.style.display='';}
+        const detail=canvas&&canvas.parentElement.querySelector('.drill-detail');
+        if(detail) detail.style.display='none';
+    }
+}
 
 // Helper: filter data excluding certain categories for chart display
 function chartData(exclKey){
@@ -1278,14 +1293,27 @@ function updateBalanceChart(){
     });
 }
 
-let kat1DrillA=null; // drill state for Kat1 Ausgaben
-let kat1DrillE=null; // drill state for Kat1 Einnahmen
+let kat1DrillA=null; // drill state: null | {cat:'X'} | {cat:'X',sub:'Y'}
+let kat1DrillE=null;
 
 function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,accentColor,label){
     destroyChart(chartId);
     const titleEl=document.getElementById(canvasId).closest('.chart-card').querySelector('.chart-title');
     const dlConfig={display:'auto',color:'#fff',font:{size:10,weight:700},formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+b,0);const pct=((v/total)*100);return pct>=5?fmtShort(v):'';}};
 
+    const setDrill=(v)=>{
+        if(drillVar==='kat1DrillA'){kat1DrillA=v;updateKat1AusgabenChart();}
+        else if(drillVar==='kat1DrillE'){kat1DrillE=v;updateKat1EinnahmenChart();}
+        else if(drillVar==='kat2DrillA'){kat2DrillA=v;updateKat2AusgabenChart();}
+        else if(drillVar==='kat2DrillE'){kat2DrillE=v;updateKat2EinnahmenChart();}
+    };
+    // Expose for inline onclick
+    window['_drillSet_'+chartId]=setDrill;
+
+    const subKey=katKey==='kat1'?'kat2':'kat1';
+    const subLabel=katKey==='kat1'?'Kat2':'Kat1';
+
+    // === LEVEL 0: Overview by katKey ===
     if(!drillVal){
         titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${label} nach ${katKey==='kat1'?'Kat1':'Kat2'}`;
         const byKat={};
@@ -1297,27 +1325,17 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
                 onClick:(evt,elems)=>{
-                    if(elems.length>0){
-                        const cat=sorted[elems[0].index][0];
-                        if(drillVar==='kat1DrillA'){kat1DrillA=cat;updateKat1AusgabenChart();}
-                        else if(drillVar==='kat1DrillE'){kat1DrillE=cat;updateKat1EinnahmenChart();}
-                        else if(drillVar==='kat2DrillA'){kat2DrillA=cat;updateKat2AusgabenChart();}
-                        else if(drillVar==='kat2DrillE'){kat2DrillE=cat;updateKat2EinnahmenChart();}
-                    }
+                    if(elems.length>0) setDrill({cat:sorted[elems[0].index][0]});
                 },
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
                     tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},datalabels:dlConfig}}
         });
-    } else {
-        const subKey=katKey==='kat1'?'kat2':'kat1';
-        const subLabel=katKey==='kat1'?'Kat2':'Kat1';
-        const backFn=drillVar==='kat1DrillA'?'kat1DrillA=null;updateKat1AusgabenChart();'
-            :drillVar==='kat1DrillE'?'kat1DrillE=null;updateKat1EinnahmenChart();'
-            :drillVar==='kat2DrillA'?'kat2DrillA=null;updateKat2AusgabenChart();'
-            :'kat2DrillE=null;updateKat2EinnahmenChart();';
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal} \u2013 nach ${subLabel} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="${backFn}">\u2190 zur\u00fcck</span>`;
+
+    // === LEVEL 1: Sub-category breakdown ===
+    } else if(!drillVal.sub) {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u2013 nach ${subLabel} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}'](null)">\u2190 zur\u00fcck</span>`;
         const bySub={};
-        data.filter(r=>(val(r,katKey).toString().trim()||'Ohne')===drillVal).forEach(r=>{
+        data.filter(r=>(val(r,katKey).toString().trim()||'Ohne')===drillVal.cat).forEach(r=>{
             const k=val(r,subKey).toString().trim()||'Ohne';
             bySub[k]=(bySub[k]||0)+Math.abs(num(r,amtKey));
         });
@@ -1327,9 +1345,62 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
             type:'doughnut',
             data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
             options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+                onClick:(evt,elems)=>{
+                    if(elems.length>0) setDrill({cat:drillVal.cat,sub:sorted[elems[0].index][0]});
+                },
                 plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:8,font:{size:10}}},
                     tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},datalabels:dlConfig}}
         });
+
+    // === LEVEL 2: Detail positions ===
+    } else {
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u203a ${drillVal.sub} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}']({cat:'${drillVal.cat.replace(/'/g,"\\'")}'});">\u2190 zur\u00fcck</span>`;
+        const positions=data.filter(r=>{
+            const k1=(val(r,katKey).toString().trim()||'Ohne');
+            const k2=(val(r,subKey).toString().trim()||'Ohne');
+            return k1===drillVal.cat && k2===drillVal.sub && Math.abs(num(r,amtKey))>0;
+        }).sort((a,b)=>Math.abs(num(b,amtKey))-Math.abs(num(a,amtKey)));
+
+        // Replace canvas with detail table
+        const container=document.getElementById(canvasId).parentElement;
+        const canvas=document.getElementById(canvasId);
+        canvas.style.display='none';
+
+        let detailDiv=container.querySelector('.drill-detail');
+        if(!detailDiv){
+            detailDiv=document.createElement('div');
+            detailDiv.className='drill-detail';
+            container.appendChild(detailDiv);
+        }
+        detailDiv.style.display='';
+
+        if(positions.length===0){
+            detailDiv.innerHTML='<div style="padding:1rem;color:var(--text-muted);text-align:center;">Keine Positionen</div>';
+            return;
+        }
+
+        const hasBetreff=COL_MAP.betreff!==null;
+        let html=`<div style="overflow-y:auto;max-height:100%;font-size:0.78rem;">`;
+        html+=`<table style="width:100%;border-collapse:collapse;"><thead><tr style="border-bottom:2px solid var(--border);text-align:left;">`;
+        html+=`<th style="padding:4px 6px;">Datum</th><th style="padding:4px 6px;">Empf\u00e4nger</th>`;
+        if(hasBetreff) html+=`<th style="padding:4px 6px;">Betreff</th>`;
+        html+=`<th style="padding:4px 6px;text-align:right;">${label}</th></tr></thead><tbody>`;
+        let total=0;
+        positions.forEach((r,i)=>{
+            const amt=Math.abs(num(r,amtKey));
+            total+=amt;
+            const bg=i%2===0?'transparent':'var(--bg-secondary, rgba(128,128,128,0.06))';
+            html+=`<tr style="border-bottom:1px solid var(--border);background:${bg};">`;
+            html+=`<td style="padding:4px 6px;white-space:nowrap;">${fmtDate(r._date)}</td>`;
+            html+=`<td style="padding:4px 6px;">${val(r,'empfaenger')}</td>`;
+            if(hasBetreff) html+=`<td style="padding:4px 6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${val(r,'betreff')}</td>`;
+            html+=`<td style="padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtCurrency(amt)}</td>`;
+            html+=`</tr>`;
+        });
+        html+=`<tr style="border-top:2px solid var(--border);font-weight:700;"><td style="padding:4px 6px;" colspan="${hasBetreff?3:2}">Gesamt (${positions.length} Positionen)</td>`;
+        html+=`<td style="padding:4px 6px;text-align:right;">${fmtCurrency(total)}</td></tr>`;
+        html+=`</tbody></table></div>`;
+        detailDiv.innerHTML=html;
     }
 }
 
@@ -1370,7 +1441,7 @@ function updateKat1TimeChart(){
     });
 }
 
-let kat2DrillA=null;
+let kat2DrillA=null; // drill state: null | {cat:'X'} | {cat:'X',sub:'Y'}
 let kat2DrillE=null;
 
 function updateKat2AusgabenChart(){
