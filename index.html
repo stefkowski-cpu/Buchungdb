@@ -689,19 +689,34 @@ function num(row,key) {
     if(typeof v==='number') return v;
     v=v.toString().trim();
     // Standalone dash means no value
-    if(v==='-'||v==='\u2013'||v==='\u2014') return 0;
+    if(v==='-'||v==='–'||v==='—') return 0;
     v=v.replace(/[€\s]/g,'').replace(/\./g,'').replace(',','.');
-    // German trailing-minus format: "1900.00-" = debit indicator in opposite column → treat as 0
-    if(/^\d[\d.]*[-\u2013]$/.test(v)) return 0;
     const n=parseFloat(v); return isNaN(n)?0:n;
 }
 function parseDate(v) {
     if(!v) return null;
-    if(v instanceof Date) return v;
-    if(typeof v==='number') { const d=new Date((v-25569)*86400000); return isNaN(d)?null:d; }
-    const m=v.toString().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    if(m) return new Date(+m[3],+m[2]-1,+m[1]);
-    const d=new Date(v); return isNaN(d)?null:d;
+    // Date object from XLSX: normalize to local date (avoid UTC offset issues)
+    if(v instanceof Date) {
+        if(isNaN(v)) return null;
+        return new Date(v.getFullYear(),v.getMonth(),v.getDate());
+    }
+    // Excel serial number: convert to local date without timezone shift
+    if(typeof v==='number') {
+        const utc=new Date((v-25569)*86400000);
+        if(isNaN(utc)) return null;
+        return new Date(utc.getUTCFullYear(),utc.getUTCMonth(),utc.getUTCDate());
+    }
+    const s=v.toString().trim();
+    // German format: DD.MM.YYYY
+    const m=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+    if(m){
+        let y=+m[3]; if(y<100) y+=2000;
+        return new Date(y,+m[2]-1,+m[1]);
+    }
+    // ISO format: YYYY-MM-DD
+    const iso=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(iso) return new Date(+iso[1],+iso[2]-1,+iso[3]);
+    return null;
 }
 function getISOWeek(d) {
     if(!d) return null;
@@ -718,10 +733,10 @@ function fmtShort(n) {
 function monthKey(d) { return d?(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')):'?'; }
 function monthLabel(key) {
     const[y,m]=key.split('-');
-    const months=['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    const months=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
     return months[parseInt(m)-1]+' '+y;
 }
-const MONTH_NAMES=['Januar','Februar','M\u00e4rz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const MONTH_NAMES=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
 function gfv(id){const el=document.getElementById(id);return el?el.value.trim():'';}
 
@@ -751,13 +766,33 @@ dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag-over')
 dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag-over');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0]);});
 
+function isUTF8(buffer){
+    const a=new Uint8Array(buffer);
+    for(let i=0;i<a.length;i++){
+        if(a[i]<0x80) continue;
+        if(a[i]>=0xC2&&a[i]<=0xDF){
+            if(i+1>=a.length||a[i+1]<0x80||a[i+1]>0xBF) return false;
+            i++;
+        } else if(a[i]>=0xE0&&a[i]<=0xEF){
+            if(i+2>=a.length||a[i+1]<0x80||a[i+1]>0xBF||a[i+2]<0x80||a[i+2]>0xBF) return false;
+            i+=2;
+        } else if(a[i]>=0xF0&&a[i]<=0xF4){
+            if(i+3>=a.length) return false;
+            i+=3;
+        } else { return false; }
+    }
+    return true;
+}
+
 function handleFile(file){
     document.getElementById('loading-overlay').classList.remove('hidden');
     document.getElementById('file-name').textContent=file.name;
     const reader=new FileReader();
     reader.onload=e=>{
         try{
-            const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+            // Detect encoding: if not valid UTF-8, use Windows-1252 (common for German CSV/Excel)
+            const cpOpt=isUTF8(e.target.result)?65001:1252;
+            const wb=XLSX.read(e.target.result,{type:'array',codepage:cpOpt});
             const ws=wb.Sheets[wb.SheetNames[0]];
             const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
             if(json.length<2){alert('Keine Daten.');return;}
@@ -870,7 +905,7 @@ function renderMonthTags(){
         }
     });
     const container=document.getElementById('tf-months');
-    const MSHORT=['Jan','Feb','M\u00e4r','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    const MSHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
     container.innerHTML=[...ms].sort((a,b)=>a-b).map(m=>
         `<span class="multi-tag ${selectedMonths.has(m)?'selected':''}" onclick="toggleMonth(${m})">${MSHORT[m]}</span>`
     ).join('');
@@ -1142,7 +1177,7 @@ function updateSummary(){
 // ---- AI Summary ----
 function updateAISummary(sData,tE,tA,saldo,cnt){
     const el=document.getElementById('ai-summary-content');
-    if(cnt===0){el.innerHTML='<span style="color:var(--text-muted)">Keine Daten f\u00fcr die Analyse verf\u00fcgbar.</span>';return;}
+    if(cnt===0){el.innerHTML='<span style="color:var(--text-muted)">Keine Daten für die Analyse verfügbar.</span>';return;}
 
     const lines=[];
     const fc=fmtCurrency;
@@ -1159,13 +1194,13 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
     let saldoIcon,saldoText;
     if(saldo>0){
         saldoIcon='\u2705';
-        saldoText=`Das Saldo ist <b style="color:#10b981">positiv</b> (${fc(saldo)}). Die Einnahmen \u00fcbersteigen die Ausgaben um ${Math.abs(saldoPct).toFixed(1)}%.`;
+        saldoText=`Das Saldo ist <b style="color:#10b981">positiv</b> (${fc(saldo)}). Die Einnahmen übersteigen die Ausgaben um ${Math.abs(saldoPct).toFixed(1)}%.`;
     } else if(saldo===0){
         saldoIcon='\u26a0\ufe0f';
         saldoText='Einnahmen und Ausgaben sind <b>ausgeglichen</b>.';
     } else {
         saldoIcon='\u274c';
-        saldoText=`Das Saldo ist <b style="color:#ef4444">negativ</b> (${fc(saldo)}). Die Ausgaben \u00fcbersteigen die Einnahmen um ${Math.abs(saldoPct).toFixed(1)}%.`;
+        saldoText=`Das Saldo ist <b style="color:#ef4444">negativ</b> (${fc(saldo)}). Die Ausgaben übersteigen die Einnahmen um ${Math.abs(saldoPct).toFixed(1)}%.`;
     }
     lines.push(`${saldoIcon} ${saldoText}`);
 
@@ -1176,7 +1211,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
             const rateLabel=sparquote>=20?'ausgezeichnet':sparquote>=10?'gut':sparquote>=5?'moderat':'gering';
             lines.push(`Die <b>Sparquote</b> liegt bei ${sparquote.toFixed(1)}% \u2013 das ist <b>${rateLabel}</b>.`);
         } else {
-            lines.push(`Es wird aktuell <b>nicht gespart</b> \u2013 die Ausgaben \u00fcbersteigen die Einnahmen.`);
+            lines.push(`Es wird aktuell <b>nicht gespart</b> – die Ausgaben übersteigen die Einnahmen.`);
         }
     }
 
@@ -1188,7 +1223,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
         if(sorted.length>0){
             const top3=sorted.slice(0,3);
             const topParts=top3.map(([k,v])=>`<b>${k}</b> (${fc(v)}, ${(v/tA*100).toFixed(0)}%)`);
-            lines.push(`Die gr\u00f6\u00dften Ausgabenposten: ${topParts.join(', ')}.`);
+            lines.push(`Die größten Ausgabenposten: ${topParts.join(', ')}.`);
         }
     }
 
@@ -1199,7 +1234,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
         const sorted=Object.entries(byEmp).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,3);
         if(sorted.length>0){
             const parts=sorted.map(([k,v])=>`<b>${k}</b> (${fc(v)})`);
-            lines.push(`H\u00e4ufigste Ausgabenempf\u00e4nger: ${parts.join(', ')}.`);
+            lines.push(`Häufigste Ausgabenempfänger: ${parts.join(', ')}.`);
         }
     }
 
@@ -1224,7 +1259,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
         } else if(avgLast<avgFirst*0.9){
             lines.push('Der Trend der letzten Monate zeigt eine <b style="color:#ef4444">negative Entwicklung</b> \u2013 das Saldo verschlechtert sich.');
         } else {
-            lines.push('Das monatliche Saldo ist \u00fcber den Zeitraum relativ <b>stabil</b>.');
+            lines.push('Das monatliche Saldo ist über den Zeitraum relativ <b>stabil</b>.');
         }
 
         // Monthly averages
@@ -1241,7 +1276,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
         const outliers=monthlyA.filter(m=>m.a>avgA+1.5*stdA);
         if(outliers.length>0&&outliers.length<=3){
             const names=outliers.map(o=>`<b>${monthLabel(o.mk)}</b> (${fc(o.a)})`).join(', ');
-            lines.push(`\u26a1 Auff\u00e4llig hohe Ausgaben in: ${names}.`);
+            lines.push(`⚡ Auffällig hohe Ausgaben in: ${names}.`);
         }
     }
 
@@ -1364,7 +1399,7 @@ function updateMonthlyChart(){
         const isE=monthlyDrill.type==='einnahmen';
         const label=isE?'Einnahmen':'Ausgaben';
         const color=isE?'#10b981':'#ef4444';
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} nach Kat1 pro Monat <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill=null;updateMonthlyChart();">\u2190 zur\u00fcck</span>`;
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} nach Kat1 pro Monat <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill=null;updateMonthlyChart();">\u2190 zurück</span>`;
 
         const byMonthKat={};const katSet=new Set();
         data.forEach(r=>{
@@ -1403,7 +1438,7 @@ function updateMonthlyChart(){
         const label=isE?'Einnahmen':'Ausgaben';
         const color=isE?'#10b981':'#ef4444';
         const escapedKat1=monthlyDrill.kat1.replace(/'/g,"\\'");
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} \u203a ${monthlyDrill.kat1} nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill={type:'${monthlyDrill.type}'};updateMonthlyChart();">\u2190 zur\u00fcck</span>`;
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} \u203a ${monthlyDrill.kat1} nach Kat2 <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill={type:'${monthlyDrill.type}'};updateMonthlyChart();">\u2190 zurück</span>`;
 
         const filtered=data.filter(r=>(val(r,'kat1').toString().trim()||'Ohne')===monthlyDrill.kat1);
         const byMonthKat={};const katSet=new Set();
@@ -1445,7 +1480,7 @@ function updateMonthlyChart(){
         const color=isE?'#10b981':'#ef4444';
         const amtKey=monthlyDrill.type;
         const escapedKat1=monthlyDrill.kat1.replace(/'/g,"\\'");
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} \u203a ${monthlyDrill.kat1} \u203a ${monthlyDrill.kat2} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill={type:'${monthlyDrill.type}',kat1:'${escapedKat1}'};updateMonthlyChart();">\u2190 zur\u00fcck</span>`;
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${color}"></span>${label} \u203a ${monthlyDrill.kat1} \u203a ${monthlyDrill.kat2} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="monthlyDrill={type:'${monthlyDrill.type}',kat1:'${escapedKat1}'};updateMonthlyChart();">\u2190 zurück</span>`;
 
         const positions=data.filter(r=>{
             const k1=(val(r,'kat1').toString().trim()||'Ohne');
@@ -1461,7 +1496,7 @@ function updateMonthlyChart(){
         if(positions.length===0){dd.innerHTML='<div style="padding:1rem;color:var(--text-muted);text-align:center;">Keine Positionen</div>';return;}
         const hasBetreff=COL_MAP.betreff!==null;
         let html=`<div style="overflow-y:auto;max-height:100%;font-size:0.78rem;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="border-bottom:2px solid var(--border);text-align:left;">`;
-        html+=`<th style="padding:4px 6px;">Datum</th><th style="padding:4px 6px;">Empf\u00e4nger</th>`;
+        html+=`<th style="padding:4px 6px;">Datum</th><th style="padding:4px 6px;">Empfänger</th>`;
         if(hasBetreff) html+=`<th style="padding:4px 6px;">Betreff</th>`;
         html+=`<th style="padding:4px 6px;text-align:right;">${label}</th></tr></thead><tbody>`;
         let total=0;
@@ -1554,7 +1589,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
 
     // === LEVEL 1: Sub-category breakdown ===
     } else if(!drillVal.sub) {
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u2013 nach ${subLabel} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}'](null)">\u2190 zur\u00fcck</span>`;
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u2013 nach ${subLabel} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}'](null)">\u2190 zurück</span>`;
         const bySub={};
         data.filter(r=>(val(r,katKey).toString().trim()||'Ohne')===drillVal.cat).forEach(r=>{
             const k=val(r,subKey).toString().trim()||'Ohne';
@@ -1575,7 +1610,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
 
     // === LEVEL 2: Detail positions ===
     } else {
-        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u203a ${drillVal.sub} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}']({cat:'${drillVal.cat.replace(/'/g,"\\'")}'});">\u2190 zur\u00fcck</span>`;
+        titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${drillVal.cat} \u203a ${drillVal.sub} <span style="font-size:0.7rem;color:var(--text-muted);cursor:pointer;margin-left:8px;" onclick="window['_drillSet_${chartId}']({cat:'${drillVal.cat.replace(/'/g,"\\'")}'});">\u2190 zurück</span>`;
         const positions=data.filter(r=>{
             const k1=(val(r,katKey).toString().trim()||'Ohne');
             const k2=(val(r,subKey).toString().trim()||'Ohne');
@@ -1603,7 +1638,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         const hasBetreff=COL_MAP.betreff!==null;
         let html=`<div style="overflow-y:auto;max-height:100%;font-size:0.78rem;">`;
         html+=`<table style="width:100%;border-collapse:collapse;"><thead><tr style="border-bottom:2px solid var(--border);text-align:left;">`;
-        html+=`<th style="padding:4px 6px;">Datum</th><th style="padding:4px 6px;">Empf\u00e4nger</th>`;
+        html+=`<th style="padding:4px 6px;">Datum</th><th style="padding:4px 6px;">Empfänger</th>`;
         if(hasBetreff) html+=`<th style="padding:4px 6px;">Betreff</th>`;
         html+=`<th style="padding:4px 6px;text-align:right;">${label}</th></tr></thead><tbody>`;
         let total=0;
@@ -1822,7 +1857,7 @@ function updateForecastChart(){
 
 // ---- Table ----
 const displayColumns=['datum','empfaenger','kat1','kat2','verkettet','kat0','einnahmen','ausgaben','ueberschuss','betreff'];
-const displayLabels={datum:'Datum',empfaenger:'Empf\u00e4nger',kat1:'Kat1',kat2:'Kat2',verkettet:'Verkettet',kat0:'Kat 0',einnahmen:'Einnahmen',ausgaben:'Ausgaben',ueberschuss:'\u00dcberschuss',betreff:'Betreff'};
+const displayLabels={datum:'Datum',empfaenger:'Empfänger',kat1:'Kat1',kat2:'Kat2',verkettet:'Verkettet',kat0:'Kat 0',einnahmen:'Einnahmen',ausgaben:'Ausgaben',ueberschuss:'Überschuss',betreff:'Betreff'};
 
 function updateTable(){
     const head=document.getElementById('table-head');
