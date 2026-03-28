@@ -687,7 +687,12 @@ function num(row,key) {
     let v=val(row,key);
     if(v===''||v===null||v===undefined) return 0;
     if(typeof v==='number') return v;
-    v=v.toString().replace(/[€\s]/g,'').replace(/\./g,'').replace(',','.');
+    v=v.toString().trim();
+    // Standalone dash means no value
+    if(v==='-'||v==='\u2013'||v==='\u2014') return 0;
+    v=v.replace(/[€\s]/g,'').replace(/\./g,'').replace(',','.');
+    // German trailing-minus format: "1900.00-" = debit indicator in opposite column → treat as 0
+    if(/^\d[\d.]*[-\u2013]$/.test(v)) return 0;
     const n=parseFloat(v); return isNaN(n)?0:n;
 }
 function parseDate(v) {
