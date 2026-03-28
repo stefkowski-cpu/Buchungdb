@@ -715,6 +715,9 @@ function num(row,key) {
     }
     const n=parseFloat(v); return isNaN(n)?0:n;
 }
+// Return only positive amounts (negative values in Einnahmen/Ausgaben are counter-entries, not real)
+function posNum(row,key) { const n=num(row,key); return n>0?n:0; }
+
 function parseDate(v) {
     if(!v) return null;
     // Date object from XLSX: normalize to local date (avoid UTC offset issues)
@@ -845,8 +848,28 @@ function handleFile(file){
                 // CSV: read as text with correct encoding, parse manually
                 // All values stay as strings → our parsers handle German formats
                 const buf=e.target.result;
-                const encoding=isUTF8(buf)?'UTF-8':'windows-1252';
-                const text=new TextDecoder(encoding).decode(buf);
+                let text;
+                if(isUTF8(buf)){
+                    text=new TextDecoder('utf-8').decode(buf);
+                } else {
+                    // Windows-1252 / ISO-8859-1 (common for German Excel CSV exports)
+                    // Manual decode: map each byte to its Unicode character
+                    const bytes=new Uint8Array(buf);
+                    const cp1252=[...Array(256)].map((_,i)=>i);
+                    // Windows-1252 specific mappings (0x80-0x9F)
+                    const cp1252map={0x80:0x20AC,0x82:0x201A,0x83:0x0192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,
+                        0x88:0x02C6,0x89:0x2030,0x8A:0x0160,0x8B:0x2039,0x8C:0x0152,0x8E:0x017D,
+                        0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,
+                        0x98:0x02DC,0x99:0x2122,0x9A:0x0161,0x9B:0x203A,0x9C:0x0153,0x9E:0x017E,0x9F:0x0178};
+                    const chars=[];
+                    for(let i=0;i<bytes.length;i++){
+                        const b=bytes[i];
+                        if(b<0x80) chars.push(String.fromCharCode(b));
+                        else if(cp1252map[b]) chars.push(String.fromCharCode(cp1252map[b]));
+                        else chars.push(String.fromCharCode(b)); // 0xA0-0xFF map directly to Unicode
+                    }
+                    text=chars.join('');
+                }
                 json=parseCSVText(text);
             } else {
                 // Excel: use XLSX with raw values (serial numbers for dates, numbers for amounts)
@@ -1218,9 +1241,8 @@ function updateSummary(){
     let tE=0, tA=0;
     const sData=chartDataBoth();
     sData.forEach(r=>{
-        const e=num(r,'einnahmen'), a=num(r,'ausgaben');
-        tE+=Math.abs(e);
-        tA+=Math.abs(a);
+        tE+=posNum(r,'einnahmen');
+        tA+=posNum(r,'ausgaben');
     });
     const saldo=tE-tA;
     const cnt=sData.length;
@@ -1277,7 +1299,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
     // Top expense categories (Kat1)
     if(COL_MAP.kat1!==null){
         const byKat={};
-        sData.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,'ausgaben'));});
+        sData.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+posNum(r,'ausgaben');});
         const sorted=Object.entries(byKat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
         if(sorted.length>0){
             const top3=sorted.slice(0,3);
@@ -1289,7 +1311,7 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
     // Top recipients
     if(COL_MAP.empfaenger!==null){
         const byEmp={};
-        sData.forEach(r=>{const e=val(r,'empfaenger').toString().trim();if(e)byEmp[e]=(byEmp[e]||0)+Math.abs(num(r,'ausgaben'));});
+        sData.forEach(r=>{const e=val(r,'empfaenger').toString().trim();if(e)byEmp[e]=(byEmp[e]||0)+posNum(r,'ausgaben');});
         const sorted=Object.entries(byEmp).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,3);
         if(sorted.length>0){
             const parts=sorted.map(([k,v])=>`<b>${k}</b> (${fc(v)})`);
@@ -1303,8 +1325,8 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
         if(!r._date) return;
         const mk=monthKey(r._date);
         if(!byMonth[mk]) byMonth[mk]={e:0,a:0};
-        byMonth[mk].e+=Math.abs(num(r,'einnahmen'));
-        byMonth[mk].a+=Math.abs(num(r,'ausgaben'));
+        byMonth[mk].e+=posNum(r,'einnahmen');
+        byMonth[mk].a+=posNum(r,'ausgaben');
     });
     const mKeys=Object.keys(byMonth).sort();
     if(mKeys.length>=3){
@@ -1424,7 +1446,7 @@ function updateMonthlyChart(){
 
     const data=chartDataBoth();
     const byMonth={};
-    data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]={e:0,a:0};byMonth[mk].e+=num(r,'einnahmen');byMonth[mk].a+=num(r,'ausgaben');});
+    data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]={e:0,a:0};byMonth[mk].e+=posNum(r,'einnahmen');byMonth[mk].a+=posNum(r,'ausgaben');});
     const keys=Object.keys(byMonth).sort();
 
     const titleEl=document.getElementById('chart-monthly').closest('.chart-card').querySelector('.chart-title');
@@ -1464,7 +1486,7 @@ function updateMonthlyChart(){
         data.forEach(r=>{
             const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
             if(!byMonthKat[mk])byMonthKat[mk]={};
-            const amount=isE?num(r,'einnahmen'):num(r,'ausgaben');
+            const amount=isE?posNum(r,'einnahmen'):posNum(r,'ausgaben');
             byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+amount;
             katSet.add(k);
         });
@@ -1504,7 +1526,7 @@ function updateMonthlyChart(){
         filtered.forEach(r=>{
             const mk=monthKey(r._date);const k=val(r,'kat2').toString().trim()||'Ohne';
             if(!byMonthKat[mk])byMonthKat[mk]={};
-            const amount=isE?num(r,'einnahmen'):num(r,'ausgaben');
+            const amount=isE?posNum(r,'einnahmen'):posNum(r,'ausgaben');
             byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+amount;
             katSet.add(k);
         });
@@ -1544,8 +1566,8 @@ function updateMonthlyChart(){
         const positions=data.filter(r=>{
             const k1=(val(r,'kat1').toString().trim()||'Ohne');
             const k2=(val(r,'kat2').toString().trim()||'Ohne');
-            return k1===monthlyDrill.kat1 && k2===monthlyDrill.kat2 && Math.abs(num(r,amtKey))>0;
-        }).sort((a,b)=>Math.abs(num(b,amtKey))-Math.abs(num(a,amtKey)));
+            return k1===monthlyDrill.kat1 && k2===monthlyDrill.kat2 && posNum(r,amtKey)>0;
+        }).sort((a,b)=>posNum(b,amtKey)-posNum(a,amtKey));
 
         canvas.style.display='none';
         let dd=canvas.parentElement.querySelector('.drill-detail');
@@ -1560,7 +1582,7 @@ function updateMonthlyChart(){
         html+=`<th style="padding:4px 6px;text-align:right;">${label}</th></tr></thead><tbody>`;
         let total=0;
         positions.forEach((r,i)=>{
-            const amt=Math.abs(num(r,amtKey));total+=amt;
+            const amt=posNum(r,amtKey);total+=amt;
             const bg=i%2===0?'transparent':'var(--bg-secondary, rgba(128,128,128,0.06))';
             html+=`<tr style="border-bottom:1px solid var(--border);background:${bg};">`;
             html+=`<td style="padding:4px 6px;white-space:nowrap;">${fmtDate(r._date)}</td>`;
@@ -1579,7 +1601,7 @@ function updateBalanceChart(){
     const data=[...chartDataBoth()].filter(r=>r._date).sort((a,b)=>a._date-b._date);
     let balance=0;
     const pts=data.map(r=>{
-        balance+=Math.abs(num(r,'einnahmen'))-Math.abs(num(r,'ausgaben'));
+        balance+=posNum(r,'einnahmen')-posNum(r,'ausgaben');
         return{x:r._date,y:balance};
     });
     // Insert starting point at 0
@@ -1632,7 +1654,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
     if(!drillVal){
         titleEl.innerHTML=`<span class="chart-title-dot" style="background:${accentColor}"></span>${label} nach ${katKey==='kat1'?'Kat1':'Kat2'}`;
         const byKat={};
-        data.forEach(r=>{const k=val(r,katKey).toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+Math.abs(num(r,amtKey));});
+        data.forEach(r=>{const k=val(r,katKey).toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+posNum(r,amtKey);});
         const sorted=Object.entries(byKat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
         if(sorted.length===0){titleEl.innerHTML+=` <span style="font-size:0.7rem;color:var(--text-muted)">(keine Daten)</span>`;return;}
         charts[chartId]=new Chart(document.getElementById(canvasId),{
@@ -1652,7 +1674,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         const bySub={};
         data.filter(r=>(val(r,katKey).toString().trim()||'Ohne')===drillVal.cat).forEach(r=>{
             const k=val(r,subKey).toString().trim()||'Ohne';
-            bySub[k]=(bySub[k]||0)+Math.abs(num(r,amtKey));
+            bySub[k]=(bySub[k]||0)+posNum(r,amtKey);
         });
         const sorted=Object.entries(bySub).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
         if(sorted.length===0) return;
@@ -1673,8 +1695,8 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         const positions=data.filter(r=>{
             const k1=(val(r,katKey).toString().trim()||'Ohne');
             const k2=(val(r,subKey).toString().trim()||'Ohne');
-            return k1===drillVal.cat && k2===drillVal.sub && Math.abs(num(r,amtKey))>0;
-        }).sort((a,b)=>Math.abs(num(b,amtKey))-Math.abs(num(a,amtKey)));
+            return k1===drillVal.cat && k2===drillVal.sub && posNum(r,amtKey)>0;
+        }).sort((a,b)=>posNum(b,amtKey)-posNum(a,amtKey));
 
         // Replace canvas with detail table
         const container=document.getElementById(canvasId).parentElement;
@@ -1702,7 +1724,7 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         html+=`<th style="padding:4px 6px;text-align:right;">${label}</th></tr></thead><tbody>`;
         let total=0;
         positions.forEach((r,i)=>{
-            const amt=Math.abs(num(r,amtKey));
+            const amt=posNum(r,amtKey);
             total+=amt;
             const bg=i%2===0?'transparent':'var(--bg-secondary, rgba(128,128,128,0.06))';
             html+=`<tr style="border-bottom:1px solid var(--border);background:${bg};">`;
@@ -1734,7 +1756,7 @@ function updateKat1TimeChart(){
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat1').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,'ausgaben'));
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+posNum(r,'ausgaben');
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1773,7 +1795,7 @@ function updateKat2TimeChart(){
     data.forEach(r=>{
         const mk=monthKey(r._date);const k=val(r,'kat2').toString().trim()||'Ohne';
         if(!byMonthKat[mk])byMonthKat[mk]={};
-        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+Math.abs(num(r,'ausgaben'));
+        byMonthKat[mk][k]=(byMonthKat[mk][k]||0)+posNum(r,'ausgaben');
         katSet.add(k);
     });
     const months=Object.keys(byMonthKat).sort();
@@ -1798,7 +1820,7 @@ function updateSaldoMonthlyChart(){
     destroyChart('saldoMonthly');
     const data=chartDataBoth();
     const byMonth={};
-    data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]=0;byMonth[mk]+=num(r,'einnahmen')-num(r,'ausgaben');});
+    data.forEach(r=>{const mk=monthKey(r._date);if(!byMonth[mk])byMonth[mk]=0;byMonth[mk]+=posNum(r,'einnahmen')-posNum(r,'ausgaben');});
     const keys=Object.keys(byMonth).sort();
     const values=keys.map(k=>byMonth[k]);
     const colors=values.map(v=>v>=0?'#10b98199':'#ef444499');
@@ -1816,8 +1838,8 @@ function updateSaldoMonthlyChart(){
 function updateIncomeExpenseChart(){
     destroyChart('incomeExpense');
     const data=chartDataBoth();
-    const tE=data.reduce((s,r)=>s+Math.abs(num(r,'einnahmen')),0);
-    const tA=data.reduce((s,r)=>s+Math.abs(num(r,'ausgaben')),0);
+    const tE=data.reduce((s,r)=>s+posNum(r,'einnahmen'),0);
+    const tA=data.reduce((s,r)=>s+posNum(r,'ausgaben'),0);
     charts.incomeExpense=new Chart(document.getElementById('chart-income-expense'),{
         type:'doughnut',
         data:{labels:['Einnahmen','Ausgaben'],datasets:[{data:[tE,tA],backgroundColor:['#10b98188','#ef444488'],borderColor:['#10b981','#ef4444'],borderWidth:2,hoverOffset:6}]},
@@ -1839,8 +1861,8 @@ function updateForecastChart(){
     data.forEach(r=>{
         const mk=monthKey(r._date);
         if(!byMonth[mk]) byMonth[mk]={e:0,a:0};
-        byMonth[mk].e+=Math.abs(num(r,'einnahmen'));
-        byMonth[mk].a+=Math.abs(num(r,'ausgaben'));
+        byMonth[mk].e+=posNum(r,'einnahmen');
+        byMonth[mk].a+=posNum(r,'ausgaben');
     });
     const mKeys=Object.keys(byMonth).sort();
     if(mKeys.length<2) return;
