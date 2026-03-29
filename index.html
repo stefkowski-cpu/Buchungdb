@@ -313,9 +313,18 @@
         .chart-card {
             background: var(--bg-card); border: 1px solid var(--border);
             border-radius: var(--radius); padding: 18px 20px; transition: all 0.3s;
+            position: relative;
         }
         .chart-card:hover { border-color: var(--border-glow); }
         .chart-card.full-width { grid-column: 1 / -1; }
+        .chart-stats {
+            position: absolute; top: 10px; right: 14px; text-align: right;
+            font-size: 0.62rem; line-height: 1.45; color: var(--text-muted);
+            pointer-events: none;
+        }
+        .chart-stats b { font-weight: 700; }
+        .chart-stats .cs-green { color: #10b981; }
+        .chart-stats .cs-red { color: #ef4444; }
         .chart-title {
             font-size: 0.85rem; font-weight: 700; margin-bottom: 14px;
             display: flex; align-items: center; gap: 7px;
@@ -616,10 +625,12 @@
                 <div class="charts-grid" id="charts-grid">
                     <!-- Row 1: Monthly bar + cumulative saldo -->
                     <div class="chart-card">
+                        <div class="chart-stats" id="stats-monthly"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-blue)"></span>Einnahmen &amp; Ausgaben pro Monat</div>
                         <div class="chart-container tall"><canvas id="chart-monthly"></canvas></div>
                     </div>
                     <div class="chart-card">
+                        <div class="chart-stats" id="stats-balance"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-green)"></span>Guthabenstand (ab Filterbeginn = 0)</div>
                         <div class="chart-container tall"><canvas id="chart-balance"></canvas></div>
                     </div>
@@ -636,6 +647,7 @@
 
                     <!-- Row 3: Kat1 Zeitverlauf (full width) -->
                     <div class="chart-card full-width">
+                        <div class="chart-stats" id="stats-kat1-time"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>Kat1 im Zeitverlauf</div>
                         <div class="chart-container"><canvas id="chart-kat1-time"></canvas></div>
                     </div>
@@ -652,12 +664,14 @@
 
                     <!-- Row 5: Kat2 Zeitverlauf (full width) -->
                     <div class="chart-card full-width">
+                        <div class="chart-stats" id="stats-kat2-time"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-pink)"></span>Kat2 im Zeitverlauf</div>
                         <div class="chart-container"><canvas id="chart-kat2-time"></canvas></div>
                     </div>
 
                     <!-- Row 4: Saldo per month + Einnahmen vs Ausgaben -->
                     <div class="chart-card">
+                        <div class="chart-stats" id="stats-saldo"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-orange)"></span>Monatlicher Saldo</div>
                         <div class="chart-container"><canvas id="chart-saldo-monthly"></canvas></div>
                     </div>
@@ -668,6 +682,7 @@
 
                     <!-- Forecast -->
                     <div class="chart-card full-width">
+                        <div class="chart-stats" id="stats-forecast"></div>
                         <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>Prognose bis 2032 (basierend auf Filterdaten)</div>
                         <div class="chart-container tall"><canvas id="chart-forecast"></canvas></div>
                     </div>
@@ -1422,6 +1437,7 @@ function updateSummary(){
         <div class="smini"><div class="smini-label">Ausgaben</div><div class="smini-value negative">${fmtShort(tA)}</div></div>
     `;
     updateAISummary(sData,tE,tA,saldo,cnt);
+    generateRandomInsight();
 }
 
 // ---- AI Summary ----
@@ -1560,14 +1576,14 @@ function drawWordCloud(canvasId,sData){
     entries.sort((a,b)=>b.total-a.total);
 
     const maxT=entries[0].total;
-    const minFS=9,maxFS=20;
+    const minFS=8,maxFS=16;
     const W=rect.width,H=rect.height;
-    const padX=6,padY=3,pillR=10;
+    const padX=5,padY=2,pillR=8;
 
     // Measure all words with amount subtitle
     const items=entries.map(e=>{
-        const fs=Math.max(minFS,Math.round(minFS+(maxFS-minFS)*Math.pow(e.total/maxT,0.5)));
-        const subFS=Math.max(8,Math.round(fs*0.65));
+        const fs=Math.max(minFS,Math.round(minFS+(maxFS-minFS)*Math.pow(e.total/maxT,0.45)));
+        const subFS=Math.max(7,Math.round(fs*0.6));
         ctx.font=`700 ${fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
         const tw=ctx.measureText(e.name).width;
         const amtText=(e.net>=0?'+':'')+fmtShort(e.net)+' \u20ac';
@@ -1580,14 +1596,14 @@ function drawWordCloud(canvasId,sData){
 
     // Simple placement: row-based wrapping
     const placed=[];
-    let cx=4,cy=4;
+    let cx=3,cy=3;
     let rowH=0;
     items.forEach(it=>{
-        if(cx+it.w>W-4){cx=4;cy+=rowH+4;rowH=0;}
-        if(cy+it.h>H-2) return;
+        if(cx+it.w>W-3){cx=3;cy+=rowH+3;rowH=0;}
+        if(cy+it.h>H-1) return;
         it.x=cx;it.y=cy;
         placed.push(it);
-        cx+=it.w+4;
+        cx+=it.w+3;
         rowH=Math.max(rowH,it.h);
     });
 
@@ -1800,6 +1816,26 @@ function chartDataBoth(){
     return data;
 }
 
+function renderChartStatsHTML(tE,tA,months){
+    const fc=fmtShort;
+    const n=Math.max(months,1);
+    return `<span class="cs-green">\u03a3 ${fc(tE)}</span> <span class="cs-green">\u00d8 ${fc(tE/n)}</span><br><span class="cs-red">\u03a3 ${fc(tA)}</span> <span class="cs-red">\u00d8 ${fc(tA/n)}</span>`;
+}
+function updateChartStats(){
+    const data=chartDataBoth();
+    let tE=0,tA=0;
+    const byMonth={};
+    data.forEach(r=>{
+        tE+=posNum(r,'einnahmen');tA+=posNum(r,'ausgaben');
+        if(r._date){const mk=monthKey(r._date);byMonth[mk]=1;}
+    });
+    const mc=Object.keys(byMonth).length;
+    const html=renderChartStatsHTML(tE,tA,mc);
+    ['stats-monthly','stats-balance','stats-kat1-time','stats-kat2-time','stats-saldo','stats-forecast'].forEach(id=>{
+        const el=document.getElementById(id);if(el) el.innerHTML=html;
+    });
+}
+
 function updateCharts(){
     chartDefaults();
     updateMonthlyChart();
@@ -1813,6 +1849,7 @@ function updateCharts(){
     updateSaldoMonthlyChart();
     updateIncomeExpenseChart();
     updateForecastChart();
+    updateChartStats();
 }
 
 // Drill-down state: null | {type:'einnahmen'|'ausgaben'} | {type,kat1:'X'} | {type,kat1:'X',kat2:'Y'}
@@ -1844,8 +1881,8 @@ function updateMonthlyChart(){
             data:{labels:keys.map(monthLabel),datasets:[
                 {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
                 {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
-                {label:'\u00d8 Einnahmen',type:'line',data:keys.map(()=>avgE),borderColor:'#10b981',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:ctx=>ctx.dataIndex===keys.length-1,anchor:'end',align:'right',color:'#10b981',font:{size:10,weight:'700'},formatter:v=>fmtShort(v)},order:0},
-                {label:'\u00d8 Ausgaben',type:'line',data:keys.map(()=>avgA),borderColor:'#ef4444',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:ctx=>ctx.dataIndex===keys.length-1,anchor:'end',align:'right',color:'#ef4444',font:{size:10,weight:'700'},formatter:v=>fmtShort(v)},order:0},
+                {label:'\u00d8 Einnahmen',type:'line',data:keys.map(()=>avgE),borderColor:'#10b981',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
+                {label:'\u00d8 Ausgaben',type:'line',data:keys.map(()=>avgA),borderColor:'#ef4444',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
             ]},
             options:{responsive:true,maintainAspectRatio:false,
                 onClick:(evt,elems)=>{
