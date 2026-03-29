@@ -523,19 +523,19 @@
 
             <!-- Kat0 Exclusion -->
             <div class="sidebar-section" id="exclude-kat0-section" style="display:none">
-                <div class="sidebar-label">Kat 0 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat0')" id="excl-toggle-kat0" title="Alle aus-/einblenden">alle ausblenden</span></div>
+                <div class="sidebar-label">Kat 0 <span class="excl-toggle no-print" onclick="showAllExclusions('kat0')" title="Alle einblenden">alle ein</span> <span class="excl-toggle no-print" onclick="hideAllExclusions('kat0')" title="Alle ausblenden">alle aus</span></div>
                 <div class="exclude-tags" id="exclude-kat0-tags"></div>
             </div>
 
             <!-- Kat1 Exclusion -->
             <div class="sidebar-section" id="exclude-kat1-section" style="display:none">
-                <div class="sidebar-label">Kat1 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat1')" id="excl-toggle-kat1" title="Alle aus-/einblenden">alle ausblenden</span></div>
+                <div class="sidebar-label">Kat1 <span class="excl-toggle no-print" onclick="showAllExclusions('kat1')" title="Alle einblenden">alle ein</span> <span class="excl-toggle no-print" onclick="hideAllExclusions('kat1')" title="Alle ausblenden">alle aus</span></div>
                 <div class="exclude-tags" id="exclude-kat1-tags"></div>
             </div>
 
             <!-- Kat2 Exclusion -->
             <div class="sidebar-section" id="exclude-kat2-section" style="display:none">
-                <div class="sidebar-label">Kat2 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat2')" id="excl-toggle-kat2" title="Alle aus-/einblenden">alle ausblenden</span></div>
+                <div class="sidebar-label">Kat2 <span class="excl-toggle no-print" onclick="showAllExclusions('kat2')" title="Alle einblenden">alle ein</span> <span class="excl-toggle no-print" onclick="hideAllExclusions('kat2')" title="Alle ausblenden">alle aus</span></div>
                 <div class="exclude-tags" id="exclude-kat2-tags"></div>
             </div>
 
@@ -1279,11 +1279,6 @@ function renderExclusionTags(key){
         const esc=v.replace(/'/g,"\\'");
         return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${esc}')" ondblclick="soloExclusion('${key}','${esc}');event.preventDefault();"${title}>${v}</span>`;
     }).join('');
-    const toggle=document.getElementById(`excl-toggle-${key}`);
-    if(toggle){
-        const allExcluded=values.length>0&&values.every(v=>excluded.has(v));
-        toggle.textContent=allExcluded?'alle einblenden':'alle ausblenden';
-    }
 }
 
 function renderAllExclusionTags(){
@@ -1316,16 +1311,15 @@ function soloExclusion(key,value){
     applyAllFilters();
 }
 
-function toggleAllExclusions(key){
+function showAllExclusions(key){
     const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
-    const allVals=getUnique(key);
-    const allExcluded=allVals.length>0&&allVals.every(v=>set.has(v));
-    if(allExcluded){
-        set.clear();
-        applyDefaultExclusions();
-    } else {
-        allVals.forEach(v=>set.add(v));
-    }
+    set.clear();
+    renderAllExclusionTags();
+    applyAllFilters();
+}
+function hideAllExclusions(key){
+    const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
+    getUnique(key).forEach(v=>set.add(v));
     renderAllExclusionTags();
     applyAllFilters();
 }
@@ -1560,16 +1554,22 @@ function drawWordCloud(canvasId,sData){
     entries.sort((a,b)=>b.total-a.total);
 
     const maxT=entries[0].total;
-    const minFS=9,maxFS=22;
+    const minFS=9,maxFS=20;
     const W=rect.width,H=rect.height;
     const padX=6,padY=3,pillR=10;
 
-    // Measure all words and compute sizes
+    // Measure all words with amount subtitle
     const items=entries.map(e=>{
         const fs=Math.max(minFS,Math.round(minFS+(maxFS-minFS)*Math.pow(e.total/maxT,0.5)));
+        const subFS=Math.max(7,Math.round(fs*0.55));
         ctx.font=`700 ${fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
         const tw=ctx.measureText(e.name).width;
-        return{name:e.name,net:e.net,fs,w:tw+padX*2,h:fs+padY*2};
+        const amtText=fmtShort(Math.abs(e.net));
+        ctx.font=`600 ${subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        const aw=ctx.measureText(amtText).width;
+        const w=Math.max(tw,aw)+padX*2;
+        const h=fs+subFS+padY*2+1;
+        return{name:e.name,net:e.net,amt:amtText,fs,subFS,w,h};
     });
 
     // Simple placement: row-based wrapping
@@ -1589,21 +1589,24 @@ function drawWordCloud(canvasId,sData){
     placed.forEach(it=>{
         const col=it.net>=0?'#10b981':'#ef4444';
         const bg=it.net>=0?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.12)';
-        // Pill background
         ctx.fillStyle=bg;
         ctx.beginPath();
         const r=Math.min(pillR,it.h/2);
         ctx.roundRect(it.x,it.y,it.w,it.h,r);
         ctx.fill();
-        // Pill border
         ctx.strokeStyle=col+'55';
         ctx.lineWidth=1;
         ctx.stroke();
-        // Text
+        // Name
         ctx.fillStyle=col;
         ctx.font=`700 ${it.fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
-        ctx.textBaseline='middle';
-        ctx.fillText(it.name,it.x+padX,it.y+it.h/2);
+        ctx.textBaseline='top';
+        ctx.fillText(it.name,it.x+padX,it.y+padY);
+        // Amount below
+        ctx.font=`600 ${it.subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        ctx.globalAlpha=0.7;
+        ctx.fillText(it.amt,it.x+padX,it.y+padY+it.fs+1);
+        ctx.globalAlpha=1;
     });
 }
 
