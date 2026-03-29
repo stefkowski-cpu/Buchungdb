@@ -83,13 +83,16 @@
         }
 
         /* ===== AI Mini Charts ===== */
-        .ai-charts-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .ai-body { display: flex; gap: 18px; padding: 8px 14px 12px; }
+        .ai-text { flex: 1; min-width: 240px; font-size: 0.82rem; line-height: 1.6; color: var(--text-main); }
+        .ai-charts-col { flex: 0 0 320px; display: flex; flex-direction: column; gap: 10px; }
+        @media(max-width:900px){ .ai-body{flex-direction:column;} .ai-charts-col{flex:none;width:100%;} }
         .ai-mini-chart {
-            flex: 1; min-width: 180px; max-width: 280px; background: var(--bg-main);
+            background: var(--bg-main);
             border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
         }
         .ai-mini-chart-title { font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .ai-mini-chart canvas { width: 100% !important; height: 120px !important; }
+        .ai-mini-chart canvas { width: 100% !important; height: 110px !important; }
 
         /* ===== Upload Screen ===== */
         #upload-screen {
@@ -252,6 +255,10 @@
         .exclude-tag.excluded {
             background: var(--tag-exclude-bg); color: var(--accent-red);
             border-color: rgba(239,68,68,0.2); text-decoration: line-through;
+        }
+        .exclude-tag.auto-excluded {
+            color: var(--text-muted); border-color: rgba(148,163,184,0.2);
+            text-decoration: line-through; opacity: 0.5; cursor: default;
         }
 
         /* Expense analysis tags */
@@ -507,45 +514,6 @@
                 </div>
             </div>
 
-            <!-- Category filters -->
-            <div class="sidebar-section">
-                <div class="sidebar-label">Kategorien &amp; Filter <span class="filter-badge" id="active-filter-count">0</span></div>
-                <div class="sf-group" id="sf-kat0-group" style="display:none">
-                    <label>Kat 0</label>
-                    <select id="f-kat0"><option value="">Alle</option></select>
-                </div>
-                <div class="sf-group" id="sf-kat1-group" style="display:none">
-                    <label>Kat1</label>
-                    <select id="f-kat1"><option value="">Alle</option></select>
-                </div>
-                <div class="sf-group" id="sf-kat2-group" style="display:none">
-                    <label>Kat2</label>
-                    <select id="f-kat2"><option value="">Alle</option></select>
-                </div>
-                <div class="sf-group" id="sf-verkettet-group" style="display:none">
-                    <label>Verkettet</label>
-                    <select id="f-verkettet"><option value="">Alle</option></select>
-                </div>
-                <div class="sf-group">
-                    <label>Empf&auml;nger</label>
-                    <input type="text" id="f-empfaenger" placeholder="Suche...">
-                </div>
-                <div class="sf-group">
-                    <label>Betreff</label>
-                    <input type="text" id="f-betreff" placeholder="Suche...">
-                </div>
-                <div style="display:flex;gap:6px;margin-top:2px;">
-                    <div class="sf-group" style="flex:1">
-                        <label>Min Ausgabe</label>
-                        <input type="number" id="f-min-ausgaben" placeholder="0" step="0.01">
-                    </div>
-                    <div class="sf-group" style="flex:1">
-                        <label>Max Ausgabe</label>
-                        <input type="number" id="f-max-ausgaben" placeholder="0" step="0.01">
-                    </div>
-                </div>
-            </div>
-
             <!-- Kat0 Exclusion -->
             <div class="sidebar-section" id="exclude-kat0-section" style="display:none">
                 <div class="sidebar-label">Kat 0 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat0')" id="excl-toggle-kat0" title="Alle aus-/einblenden">alle ausblenden</span></div>
@@ -577,6 +545,50 @@
                 </div>
             </div>
 
+            <!-- Category filters (collapsible, at bottom) -->
+            <div class="sidebar-section" id="detail-filter-section">
+                <div class="sidebar-label" style="cursor:pointer;" onclick="toggleDetailFilters()">
+                    Detailfilter <span class="filter-badge" id="active-filter-count">0</span>
+                    <span id="detail-filter-arrow" style="font-size:0.7rem;transition:transform 0.2s;">&#9660;</span>
+                </div>
+                <div id="detail-filter-body" style="display:none;">
+                    <div class="sf-group" id="sf-kat0-group" style="display:none">
+                        <label>Kat 0</label>
+                        <select id="f-kat0"><option value="">Alle</option></select>
+                    </div>
+                    <div class="sf-group" id="sf-kat1-group" style="display:none">
+                        <label>Kat1</label>
+                        <select id="f-kat1"><option value="">Alle</option></select>
+                    </div>
+                    <div class="sf-group" id="sf-kat2-group" style="display:none">
+                        <label>Kat2</label>
+                        <select id="f-kat2"><option value="">Alle</option></select>
+                    </div>
+                    <div class="sf-group" id="sf-verkettet-group" style="display:none">
+                        <label>Verkettet</label>
+                        <select id="f-verkettet"><option value="">Alle</option></select>
+                    </div>
+                    <div class="sf-group">
+                        <label>Empf&auml;nger</label>
+                        <input type="text" id="f-empfaenger" placeholder="Suche...">
+                    </div>
+                    <div class="sf-group">
+                        <label>Betreff</label>
+                        <input type="text" id="f-betreff" placeholder="Suche...">
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:2px;">
+                        <div class="sf-group" style="flex:1">
+                            <label>Min Ausgabe</label>
+                            <input type="number" id="f-min-ausgaben" placeholder="0" step="0.01">
+                        </div>
+                        <div class="sf-group" style="flex:1">
+                            <label>Max Ausgabe</label>
+                            <input type="number" id="f-max-ausgaben" placeholder="0" step="0.01">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Reset -->
             <div class="sidebar-section" style="padding:12px 18px;">
                 <button class="btn btn-reset btn-sm no-print" onclick="resetAllFilters()" style="width:100%;justify-content:center;">Alle Filter zur&uuml;cksetzen</button>
@@ -589,11 +601,13 @@
                 <!-- AI Summary -->
                 <div class="chart-card" id="ai-summary-card" style="margin-bottom:16px;">
                     <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>KI-Analyse</div>
-                    <div id="ai-summary-content" style="padding:8px 14px;font-size:0.82rem;line-height:1.6;color:var(--text-main);"></div>
-                    <div class="ai-charts-row" id="ai-charts-row" style="padding:4px 14px 12px;">
-                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen vs Ausgaben</div><canvas id="ai-chart-ea"></canvas></div>
-                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Top Ausgaben (Kat1)</div><canvas id="ai-chart-top"></canvas></div>
-                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Monatstrend Saldo</div><canvas id="ai-chart-trend"></canvas></div>
+                    <div class="ai-body">
+                        <div class="ai-text" id="ai-summary-content"></div>
+                        <div class="ai-charts-col" id="ai-charts-col">
+                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen vs Ausgaben</div><canvas id="ai-chart-ea"></canvas></div>
+                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Top Ausgaben (Kat1)</div><canvas id="ai-chart-top"></canvas></div>
+                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Monatstrend Saldo</div><canvas id="ai-chart-trend"></canvas></div>
+                        </div>
                     </div>
                 </div>
 
@@ -812,6 +826,14 @@ function setTheme(t){
 function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark');}
 (function(){const s=localStorage.getItem('buchung-theme');setTheme(s||'dark');})();
 
+function toggleDetailFilters(){
+    const body=document.getElementById('detail-filter-body');
+    const arrow=document.getElementById('detail-filter-arrow');
+    const open=body.style.display==='none';
+    body.style.display=open?'':'none';
+    arrow.style.transform=open?'rotate(180deg)':'';
+}
+
 function printDashboard(){
     document.getElementById('print-date').textContent=new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     window.print();
@@ -860,17 +882,23 @@ dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remov
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0]);});
 
 function decodeCSVBuffer(buf){
-    // Strategy: try UTF-8 first; if it produces replacement chars (U+FFFD), fall back to CP1252
     const bytes=new Uint8Array(buf);
     // Strip UTF-8 BOM if present
     const start=(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF)?3:0;
     const slice=start>0?buf.slice(start):buf;
 
-    // Try UTF-8
-    const utf8=new TextDecoder('utf-8',{fatal:false}).decode(slice);
-    if(!utf8.includes('\uFFFD')) return utf8;
+    // Try UTF-8 strict: if any byte is invalid, fall back
+    try{
+        const utf8=new TextDecoder('utf-8',{fatal:true}).decode(slice);
+        return utf8;
+    }catch(e){}
 
-    // UTF-8 failed (replacement chars) → decode as Windows-1252 (byte-by-byte)
+    // Fallback: Windows-1252 via TextDecoder (widely supported)
+    try{
+        return new TextDecoder('windows-1252').decode(slice);
+    }catch(e){}
+
+    // Last resort: manual CP1252 decode
     const cp1252map={0x80:0x20AC,0x82:0x201A,0x83:0x0192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,
         0x88:0x02C6,0x89:0x2030,0x8A:0x0160,0x8B:0x2039,0x8C:0x0152,0x8E:0x017D,
         0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,
@@ -880,7 +908,7 @@ function decodeCSVBuffer(buf){
         const b=bytes[i];
         if(b<0x80) chars.push(String.fromCharCode(b));
         else if(cp1252map[b]) chars.push(String.fromCharCode(cp1252map[b]));
-        else chars.push(String.fromCharCode(b)); // 0xA0-0xFF map 1:1 to Unicode (ä=0xE4→U+00E4, etc.)
+        else chars.push(String.fromCharCode(b));
     }
     return chars.join('');
 }
@@ -928,7 +956,7 @@ function handleFile(file){
                 json=parseCSVText(text);
             } else {
                 // Excel: use XLSX with raw values (serial numbers for dates, numbers for amounts)
-                const wb=XLSX.read(e.target.result,{type:'array'});
+                const wb=XLSX.read(e.target.result,{type:'array',codepage:1252});
                 const ws=wb.Sheets[wb.SheetNames[0]];
                 json=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
             }
@@ -1197,15 +1225,41 @@ function buildExclusionTags(){
     }
 }
 
+// Compute which values in `key` are auto-excluded because they only appear
+// in rows where the OTHER Kat levels are all excluded
+function getAutoExcluded(key){
+    const auto=new Set();
+    const otherKeys=['kat0','kat1','kat2'].filter(k=>k!==key&&COL_MAP[k]!==null);
+    if(otherKeys.length===0) return auto;
+    const values=getUnique(key);
+    values.forEach(v=>{
+        // Find all rows that have this value
+        const rows=rawData.filter(r=>val(r,key).toString().trim()===v);
+        if(rows.length===0) return;
+        // Check: is every such row excluded by at least one other Kat exclusion?
+        const allBlocked=rows.every(r=>{
+            return otherKeys.some(ok=>{
+                const set=ok==='kat0'?excludedKat0:ok==='kat1'?excludedKat1:excludedKat2;
+                return set.has(val(r,ok).toString().trim());
+            });
+        });
+        if(allBlocked) auto.add(v);
+    });
+    return auto;
+}
+
 function renderExclusionTags(key){
     const container=document.getElementById(`exclude-${key}-tags`);
     const values=getUnique(key);
     const excluded=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
+    const autoExcl=getAutoExcluded(key);
     container.innerHTML=values.map(v=>{
         const isExcl=excluded.has(v);
+        const isAuto=!isExcl&&autoExcl.has(v);
         const col=getKatColor(v);
-        const style=isExcl?'':`border-color:${col}33;color:${col};`;
-        return `<span class="exclude-tag ${isExcl?'excluded':'active'}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')">${v}</span>`;
+        const style=isExcl||isAuto?'':`border-color:${col}33;color:${col};`;
+        const cls=isExcl?'excluded':isAuto?'excluded auto-excluded':'active';
+        return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')" ${isAuto?'title="Automatisch ausgeblendet (alle zugehörigen Zeilen sind über andere Kategorien ausgeblendet)"':''}>${v}</span>`;
     }).join('');
     // Update toggle label
     const toggle=document.getElementById(`excl-toggle-${key}`);
@@ -1215,10 +1269,16 @@ function renderExclusionTags(key){
     }
 }
 
+function renderAllExclusionTags(){
+    if(COL_MAP.kat0!==null) renderExclusionTags('kat0');
+    if(COL_MAP.kat1!==null) renderExclusionTags('kat1');
+    if(COL_MAP.kat2!==null) renderExclusionTags('kat2');
+}
+
 function toggleExclusion(key,value){
     const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
     if(set.has(value)) set.delete(value); else set.add(value);
-    renderExclusionTags(key);
+    renderAllExclusionTags();
     applyAllFilters();
 }
 
@@ -1227,14 +1287,12 @@ function toggleAllExclusions(key){
     const allVals=getUnique(key);
     const allExcluded=allVals.length>0&&allVals.every(v=>set.has(v));
     if(allExcluded){
-        // Einblenden: clear all, then re-apply defaults
         set.clear();
         applyDefaultExclusions();
     } else {
-        // Ausblenden: exclude all
         allVals.forEach(v=>set.add(v));
     }
-    renderExclusionTags(key);
+    renderAllExclusionTags();
     applyAllFilters();
 }
 
