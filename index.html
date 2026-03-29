@@ -82,6 +82,15 @@
             transition: background 0.3s, color 0.3s;
         }
 
+        /* ===== AI Mini Charts ===== */
+        .ai-charts-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .ai-mini-chart {
+            flex: 1; min-width: 180px; max-width: 280px; background: var(--bg-main);
+            border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
+        }
+        .ai-mini-chart-title { font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .ai-mini-chart canvas { width: 100% !important; height: 120px !important; }
+
         /* ===== Upload Screen ===== */
         #upload-screen {
             display: flex; align-items: center; justify-content: center;
@@ -93,7 +102,20 @@
             background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             margin-bottom: 8px; letter-spacing: -1px;
         }
-        .upload-subtitle { color: var(--text-secondary); font-size: 1rem; margin-bottom: 44px; font-weight: 300; }
+        .upload-subtitle { color: var(--text-secondary); font-size: 1rem; margin-bottom: 24px; font-weight: 300; }
+        .recent-files { margin-bottom: 24px; text-align: left; }
+        .recent-files-title { font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .recent-file-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+            cursor: pointer; margin-bottom: 6px; transition: all 0.2s;
+        }
+        .recent-file-item:hover { border-color: var(--accent-blue); box-shadow: var(--shadow-glow); }
+        .recent-file-icon { font-size: 1.1rem; opacity: 0.7; }
+        .recent-file-name { flex: 1; font-size: 0.85rem; font-weight: 500; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .recent-file-date { font-size: 0.7rem; color: var(--text-muted); }
+        .recent-file-remove { font-size: 0.75rem; color: var(--text-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+        .recent-file-remove:hover { background: var(--accent-red); color: white; }
         .drop-zone {
             border: 2px dashed var(--border); border-radius: var(--radius);
             padding: 60px 36px; cursor: pointer;
@@ -428,10 +450,11 @@
     <div class="upload-container">
         <div class="upload-logo">Buchung Dashboard</div>
         <div class="upload-subtitle">Excel-Datei hochladen f&uuml;r interaktive Finanzanalyse</div>
+        <div id="recent-files-container" class="recent-files" style="display:none;"></div>
         <div class="drop-zone" id="drop-zone">
             <span class="drop-zone-icon">&#128202;</span>
             <div class="drop-zone-text">Excel-Datei hierhin ziehen</div>
-            <div class="drop-zone-hint">oder klicken &middot; .xlsx / .xls</div>
+            <div class="drop-zone-hint">oder klicken &middot; .xlsx / .xls / .csv</div>
         </div>
         <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
     </div>
@@ -567,6 +590,11 @@
                 <div class="chart-card" id="ai-summary-card" style="margin-bottom:16px;">
                     <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>KI-Analyse</div>
                     <div id="ai-summary-content" style="padding:8px 14px;font-size:0.82rem;line-height:1.6;color:var(--text-main);"></div>
+                    <div class="ai-charts-row" id="ai-charts-row" style="padding:4px 14px 12px;">
+                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen vs Ausgaben</div><canvas id="ai-chart-ea"></canvas></div>
+                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Top Ausgaben (Kat1)</div><canvas id="ai-chart-top"></canvas></div>
+                        <div class="ai-mini-chart"><div class="ai-mini-chart-title">Monatstrend Saldo</div><canvas id="ai-chart-trend"></canvas></div>
+                    </div>
                 </div>
 
                 <div class="charts-grid" id="charts-grid">
@@ -789,6 +817,39 @@ function printDashboard(){
     window.print();
 }
 
+// ---- Recent Files ----
+function getRecentFiles(){
+    try{return JSON.parse(localStorage.getItem('buchung-recent-files')||'[]');}catch(e){return[];}
+}
+function saveRecentFile(name){
+    let files=getRecentFiles().filter(f=>f.name!==name);
+    files.unshift({name:name,date:new Date().toISOString()});
+    if(files.length>5) files=files.slice(0,5);
+    localStorage.setItem('buchung-recent-files',JSON.stringify(files));
+    renderRecentFiles();
+}
+function removeRecentFile(name,evt){
+    evt.stopPropagation();
+    let files=getRecentFiles().filter(f=>f.name!==name);
+    localStorage.setItem('buchung-recent-files',JSON.stringify(files));
+    renderRecentFiles();
+}
+function renderRecentFiles(){
+    const container=document.getElementById('recent-files-container');
+    const files=getRecentFiles();
+    if(files.length===0){container.style.display='none';return;}
+    container.style.display='';
+    const fmtD=d=>{try{return new Date(d).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return'';}};
+    container.innerHTML=`<div class="recent-files-title">Zuletzt ge\u00f6ffnet</div>`+
+        files.map(f=>`<div class="recent-file-item" onclick="document.getElementById('file-input').click()" title="${f.name}">
+            <span class="recent-file-icon">${/\.csv$/i.test(f.name)?'\ud83d\udcc4':'\ud83d\udcca'}</span>
+            <span class="recent-file-name">${f.name}</span>
+            <span class="recent-file-date">${fmtD(f.date)}</span>
+            <span class="recent-file-remove" onclick="removeRecentFile('${f.name.replace(/'/g,"\\'")}',event)" title="Entfernen">&times;</span>
+        </div>`).join('');
+}
+renderRecentFiles();
+
 // ---- Upload ----
 const dropZone=document.getElementById('drop-zone');
 const fileInput=document.getElementById('file-input');
@@ -853,6 +914,7 @@ function parseCSVText(text){
 function handleFile(file){
     document.getElementById('loading-overlay').classList.remove('hidden');
     document.getElementById('file-name').textContent=file.name;
+    saveRecentFile(file.name);
     const isCSV=/\.csv$/i.test(file.name);
 
     const reader=new FileReader();
@@ -1377,6 +1439,55 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
     }
 
     el.innerHTML=lines.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('');
+
+    // --- Mini Charts ---
+    updateAIMiniCharts(sData,tE,tA,byMonth,mKeys);
+}
+
+function updateAIMiniCharts(sData,tE,tA,byMonth,mKeys){
+    const chartOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.y||ctx.parsed||0)}}},scales:{}};
+    const noAxis={display:false};
+
+    // Chart 1: Einnahmen vs Ausgaben (horizontal bar)
+    if(charts._aiEA) charts._aiEA.destroy();
+    charts._aiEA=new Chart(document.getElementById('ai-chart-ea'),{
+        type:'bar',
+        data:{labels:['Einnahmen','Ausgaben','Saldo'],datasets:[{data:[tE,tA,tE-tA],backgroundColor:['#10b981','#ef4444',tE-tA>=0?'#4a6cf7':'#f59e0b'],borderRadius:4}]},
+        options:{...chartOpts,indexAxis:'y',scales:{x:{display:false},y:{ticks:{font:{size:10},color:'#94a3b8'},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.x)}}}}
+    });
+
+    // Chart 2: Top Ausgaben Kat1 (doughnut)
+    if(charts._aiTop) charts._aiTop.destroy();
+    const byKat={};
+    if(COL_MAP.kat1!==null){
+        sData.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+posNum(r,'ausgaben');});
+    }
+    const sorted=Object.entries(byKat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+    const top5=sorted.slice(0,5);
+    const rest=sorted.slice(5).reduce((s,e)=>s+e[1],0);
+    const dLabels=top5.map(e=>e[0]);
+    const dValues=top5.map(e=>e[1]);
+    if(rest>0){dLabels.push('Sonstige');dValues.push(rest);}
+    charts._aiTop=new Chart(document.getElementById('ai-chart-top'),{
+        type:'doughnut',
+        data:{labels:dLabels,datasets:[{data:dValues,backgroundColor:dLabels.map(l=>getKatColor(l)),borderWidth:0}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:10,padding:4,color:'#94a3b8'}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.parsed)}}}}
+    });
+
+    // Chart 3: Monatstrend Saldo (line)
+    if(charts._aiTrend) charts._aiTrend.destroy();
+    if(mKeys.length>=2){
+        const labels=mKeys.map(k=>monthLabel(k));
+        const saldi=mKeys.map(k=>byMonth[k].e-byMonth[k].a);
+        charts._aiTrend=new Chart(document.getElementById('ai-chart-trend'),{
+            type:'line',
+            data:{labels:labels,datasets:[{data:saldi,borderColor:'#4a6cf7',backgroundColor:'rgba(74,108,247,0.1)',fill:true,tension:0.3,pointRadius:2,borderWidth:2}]},
+            options:{...chartOpts,scales:{x:{ticks:{font:{size:9},color:'#94a3b8',maxRotation:45},grid:{display:false}},y:{ticks:{font:{size:9},color:'#94a3b8',callback:v=>v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0)},grid:{color:'rgba(148,163,184,0.1)'}}}}
+        });
+    } else {
+        const ctx=document.getElementById('ai-chart-trend').getContext('2d');
+        ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    }
 }
 
 // ---- Category Color Map ----
@@ -1961,6 +2072,10 @@ function updateTable(){
     head.innerHTML='<tr>'+visibleCols.map(c=>`<th class="${sortCol===c?'sorted':''}" onclick="sortTable('${c}')">${displayLabels[c]} ${sortCol===c?(sortDir===1?'\u25b2':'\u25bc'):''}</th>`).join('')+'</tr>';
 
     let data=[...filteredData];
+    // Apply exclusion filters (same as charts)
+    if(excludedKat0.size>0&&COL_MAP.kat0!==null) data=data.filter(r=>!excludedKat0.has(val(r,'kat0').toString().trim()));
+    if(excludedKat1.size>0&&COL_MAP.kat1!==null) data=data.filter(r=>!excludedKat1.has(val(r,'kat1').toString().trim()));
+    if(excludedKat2.size>0&&COL_MAP.kat2!==null) data=data.filter(r=>!excludedKat2.has(val(r,'kat2').toString().trim()));
     const search=document.getElementById('table-search').value.toLowerCase().trim();
     if(search) data=data.filter(r=>visibleCols.some(c=>val(r,c).toString().toLowerCase().includes(search)));
 
