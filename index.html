@@ -1642,11 +1642,15 @@ function updateMonthlyChart(){
     // === LEVEL 0: Overview ===
     if(!monthlyDrill){
         titleEl.innerHTML='<span class="chart-title-dot" style="background:var(--accent-blue)"></span>Einnahmen &amp; Ausgaben pro Monat';
+        const avgE=keys.length>0?keys.reduce((s,k)=>s+byMonth[k].e,0)/keys.length:0;
+        const avgA=keys.length>0?keys.reduce((s,k)=>s+byMonth[k].a,0)/keys.length:0;
         charts.monthly=new Chart(document.getElementById('chart-monthly'),{
             type:'bar',
             data:{labels:keys.map(monthLabel),datasets:[
                 {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
                 {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
+                {label:'\u00d8 Einnahmen',type:'line',data:keys.map(()=>avgE),borderColor:'#10b981',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
+                {label:'\u00d8 Ausgaben',type:'line',data:keys.map(()=>avgA),borderColor:'#ef4444',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
             ]},
             options:{responsive:true,maintainAspectRatio:false,
                 onClick:(evt,elems)=>{
