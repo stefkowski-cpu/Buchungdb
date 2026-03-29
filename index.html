@@ -165,6 +165,13 @@
             text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px;
             display: flex; align-items: center; justify-content: space-between;
         }
+        .excl-toggle {
+            font-size: 0.6rem; font-weight: 600; color: var(--accent-blue);
+            cursor: pointer; text-transform: none; letter-spacing: 0;
+            padding: 2px 8px; border-radius: 10px; border: 1px solid var(--accent-blue);
+            transition: all 0.2s;
+        }
+        .excl-toggle:hover { background: var(--accent-blue); color: white; }
         .sidebar-label .filter-badge {
             background: var(--accent-blue); color: white;
             font-size: 0.62rem; padding: 1px 7px; border-radius: 12px; font-weight: 700;
@@ -518,19 +525,19 @@
 
             <!-- Kat0 Exclusion -->
             <div class="sidebar-section" id="exclude-kat0-section" style="display:none">
-                <div class="sidebar-label">Kat 0 Ausblenden</div>
+                <div class="sidebar-label">Kat 0 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat0')" id="excl-toggle-kat0" title="Alle aus-/einblenden">alle ausblenden</span></div>
                 <div class="exclude-tags" id="exclude-kat0-tags"></div>
             </div>
 
             <!-- Kat1 Exclusion -->
             <div class="sidebar-section" id="exclude-kat1-section" style="display:none">
-                <div class="sidebar-label">Kat1 Ausblenden</div>
+                <div class="sidebar-label">Kat1 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat1')" id="excl-toggle-kat1" title="Alle aus-/einblenden">alle ausblenden</span></div>
                 <div class="exclude-tags" id="exclude-kat1-tags"></div>
             </div>
 
             <!-- Kat2 Exclusion -->
             <div class="sidebar-section" id="exclude-kat2-section" style="display:none">
-                <div class="sidebar-label">Kat2 Ausblenden</div>
+                <div class="sidebar-label">Kat2 Ausblenden <span class="excl-toggle no-print" onclick="toggleAllExclusions('kat2')" id="excl-toggle-kat2" title="Alle aus-/einblenden">alle ausblenden</span></div>
                 <div class="exclude-tags" id="exclude-kat2-tags"></div>
             </div>
 
@@ -791,22 +798,30 @@ dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag-over')
 dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag-over');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0]);});
 
-function isUTF8(buffer){
-    const a=new Uint8Array(buffer);
-    for(let i=0;i<a.length;i++){
-        if(a[i]<0x80) continue;
-        if(a[i]>=0xC2&&a[i]<=0xDF){
-            if(i+1>=a.length||a[i+1]<0x80||a[i+1]>0xBF) return false;
-            i++;
-        } else if(a[i]>=0xE0&&a[i]<=0xEF){
-            if(i+2>=a.length||a[i+1]<0x80||a[i+1]>0xBF||a[i+2]<0x80||a[i+2]>0xBF) return false;
-            i+=2;
-        } else if(a[i]>=0xF0&&a[i]<=0xF4){
-            if(i+3>=a.length) return false;
-            i+=3;
-        } else { return false; }
+function decodeCSVBuffer(buf){
+    // Strategy: try UTF-8 first; if it produces replacement chars (U+FFFD), fall back to CP1252
+    const bytes=new Uint8Array(buf);
+    // Strip UTF-8 BOM if present
+    const start=(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF)?3:0;
+    const slice=start>0?buf.slice(start):buf;
+
+    // Try UTF-8
+    const utf8=new TextDecoder('utf-8',{fatal:false}).decode(slice);
+    if(!utf8.includes('\uFFFD')) return utf8;
+
+    // UTF-8 failed (replacement chars) → decode as Windows-1252 (byte-by-byte)
+    const cp1252map={0x80:0x20AC,0x82:0x201A,0x83:0x0192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,
+        0x88:0x02C6,0x89:0x2030,0x8A:0x0160,0x8B:0x2039,0x8C:0x0152,0x8E:0x017D,
+        0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,
+        0x98:0x02DC,0x99:0x2122,0x9A:0x0161,0x9B:0x203A,0x9C:0x0153,0x9E:0x017E,0x9F:0x0178};
+    const chars=[];
+    for(let i=start;i<bytes.length;i++){
+        const b=bytes[i];
+        if(b<0x80) chars.push(String.fromCharCode(b));
+        else if(cp1252map[b]) chars.push(String.fromCharCode(cp1252map[b]));
+        else chars.push(String.fromCharCode(b)); // 0xA0-0xFF map 1:1 to Unicode (ä=0xE4→U+00E4, etc.)
     }
-    return true;
+    return chars.join('');
 }
 
 // ---- CSV Parser (bypasses XLSX auto-detection for German formats) ----
@@ -845,31 +860,9 @@ function handleFile(file){
         try{
             let json;
             if(isCSV){
-                // CSV: read as text with correct encoding, parse manually
-                // All values stay as strings → our parsers handle German formats
+                // CSV: read as text, parse manually (no XLSX auto-detection)
                 const buf=e.target.result;
-                let text;
-                if(isUTF8(buf)){
-                    text=new TextDecoder('utf-8').decode(buf);
-                } else {
-                    // Windows-1252 / ISO-8859-1 (common for German Excel CSV exports)
-                    // Manual decode: map each byte to its Unicode character
-                    const bytes=new Uint8Array(buf);
-                    const cp1252=[...Array(256)].map((_,i)=>i);
-                    // Windows-1252 specific mappings (0x80-0x9F)
-                    const cp1252map={0x80:0x20AC,0x82:0x201A,0x83:0x0192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,
-                        0x88:0x02C6,0x89:0x2030,0x8A:0x0160,0x8B:0x2039,0x8C:0x0152,0x8E:0x017D,
-                        0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,
-                        0x98:0x02DC,0x99:0x2122,0x9A:0x0161,0x9B:0x203A,0x9C:0x0153,0x9E:0x017E,0x9F:0x0178};
-                    const chars=[];
-                    for(let i=0;i<bytes.length;i++){
-                        const b=bytes[i];
-                        if(b<0x80) chars.push(String.fromCharCode(b));
-                        else if(cp1252map[b]) chars.push(String.fromCharCode(cp1252map[b]));
-                        else chars.push(String.fromCharCode(b)); // 0xA0-0xFF map directly to Unicode
-                    }
-                    text=chars.join('');
-                }
+                const text=decodeCSVBuffer(buf);
                 json=parseCSVText(text);
             } else {
                 // Excel: use XLSX with raw values (serial numbers for dates, numbers for amounts)
@@ -1152,11 +1145,33 @@ function renderExclusionTags(key){
         const style=isExcl?'':`border-color:${col}33;color:${col};`;
         return `<span class="exclude-tag ${isExcl?'excluded':'active'}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')">${v}</span>`;
     }).join('');
+    // Update toggle label
+    const toggle=document.getElementById(`excl-toggle-${key}`);
+    if(toggle){
+        const allExcluded=values.length>0&&values.every(v=>excluded.has(v));
+        toggle.textContent=allExcluded?'alle einblenden':'alle ausblenden';
+    }
 }
 
 function toggleExclusion(key,value){
     const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
     if(set.has(value)) set.delete(value); else set.add(value);
+    renderExclusionTags(key);
+    applyAllFilters();
+}
+
+function toggleAllExclusions(key){
+    const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
+    const allVals=getUnique(key);
+    const allExcluded=allVals.length>0&&allVals.every(v=>set.has(v));
+    if(allExcluded){
+        // Einblenden: clear all, then re-apply defaults
+        set.clear();
+        applyDefaultExclusions();
+    } else {
+        // Ausblenden: exclude all
+        allVals.forEach(v=>set.add(v));
+    }
     renderExclusionTags(key);
     applyAllFilters();
 }
