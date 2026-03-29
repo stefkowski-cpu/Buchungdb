@@ -83,16 +83,16 @@
         }
 
         /* ===== AI Mini Charts ===== */
-        .ai-body { display: flex; gap: 18px; padding: 8px 14px 12px; }
-        .ai-text { flex: 1; min-width: 240px; font-size: 0.82rem; line-height: 1.6; color: var(--text-main); }
-        .ai-charts-col { flex: 0 0 320px; display: flex; flex-direction: column; gap: 10px; }
-        @media(max-width:900px){ .ai-body{flex-direction:column;} .ai-charts-col{flex:none;width:100%;} }
+        .ai-body { display: flex; gap: 18px; padding: 8px 14px 12px; align-items: flex-start; }
+        .ai-text { flex: 1; min-width: 220px; font-size: 0.82rem; line-height: 1.6; color: var(--text-main); }
+        .ai-charts-row { display: flex; gap: 10px; flex: 1; min-width: 300px; }
+        @media(max-width:900px){ .ai-body{flex-direction:column;} .ai-charts-row{width:100%;} }
         .ai-mini-chart {
-            background: var(--bg-main);
+            flex: 1; background: var(--bg-main);
             border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
         }
         .ai-mini-chart-title { font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .ai-mini-chart canvas { width: 100% !important; height: 110px !important; }
+        .ai-mini-chart canvas { width: 100% !important; height: 100px !important; }
 
         /* ===== Upload Screen ===== */
         #upload-screen {
@@ -547,44 +547,39 @@
 
             <!-- Category filters (collapsible, at bottom) -->
             <div class="sidebar-section" id="detail-filter-section">
-                <div class="sidebar-label" style="cursor:pointer;" onclick="toggleDetailFilters()">
-                    Detailfilter <span class="filter-badge" id="active-filter-count">0</span>
-                    <span id="detail-filter-arrow" style="font-size:0.7rem;transition:transform 0.2s;">&#9660;</span>
+                <div class="sidebar-label">Detailfilter <span class="filter-badge" id="active-filter-count">0</span></div>
+                <div class="sf-group" id="sf-kat0-group" style="display:none">
+                    <label>Kat 0</label>
+                    <select id="f-kat0"><option value="">Alle</option></select>
                 </div>
-                <div id="detail-filter-body" style="display:none;">
-                    <div class="sf-group" id="sf-kat0-group" style="display:none">
-                        <label>Kat 0</label>
-                        <select id="f-kat0"><option value="">Alle</option></select>
+                <div class="sf-group" id="sf-kat1-group" style="display:none">
+                    <label>Kat1</label>
+                    <select id="f-kat1"><option value="">Alle</option></select>
+                </div>
+                <div class="sf-group" id="sf-kat2-group" style="display:none">
+                    <label>Kat2</label>
+                    <select id="f-kat2"><option value="">Alle</option></select>
+                </div>
+                <div class="sf-group" id="sf-verkettet-group" style="display:none">
+                    <label>Verkettet</label>
+                    <select id="f-verkettet"><option value="">Alle</option></select>
+                </div>
+                <div class="sf-group">
+                    <label>Empf&auml;nger</label>
+                    <input type="text" id="f-empfaenger" placeholder="Suche...">
+                </div>
+                <div class="sf-group">
+                    <label>Betreff</label>
+                    <input type="text" id="f-betreff" placeholder="Suche...">
+                </div>
+                <div style="display:flex;gap:6px;margin-top:2px;">
+                    <div class="sf-group" style="flex:1">
+                        <label>Min Ausgabe</label>
+                        <input type="number" id="f-min-ausgaben" placeholder="0" step="0.01">
                     </div>
-                    <div class="sf-group" id="sf-kat1-group" style="display:none">
-                        <label>Kat1</label>
-                        <select id="f-kat1"><option value="">Alle</option></select>
-                    </div>
-                    <div class="sf-group" id="sf-kat2-group" style="display:none">
-                        <label>Kat2</label>
-                        <select id="f-kat2"><option value="">Alle</option></select>
-                    </div>
-                    <div class="sf-group" id="sf-verkettet-group" style="display:none">
-                        <label>Verkettet</label>
-                        <select id="f-verkettet"><option value="">Alle</option></select>
-                    </div>
-                    <div class="sf-group">
-                        <label>Empf&auml;nger</label>
-                        <input type="text" id="f-empfaenger" placeholder="Suche...">
-                    </div>
-                    <div class="sf-group">
-                        <label>Betreff</label>
-                        <input type="text" id="f-betreff" placeholder="Suche...">
-                    </div>
-                    <div style="display:flex;gap:6px;margin-top:2px;">
-                        <div class="sf-group" style="flex:1">
-                            <label>Min Ausgabe</label>
-                            <input type="number" id="f-min-ausgaben" placeholder="0" step="0.01">
-                        </div>
-                        <div class="sf-group" style="flex:1">
-                            <label>Max Ausgabe</label>
-                            <input type="number" id="f-max-ausgaben" placeholder="0" step="0.01">
-                        </div>
+                    <div class="sf-group" style="flex:1">
+                        <label>Max Ausgabe</label>
+                        <input type="number" id="f-max-ausgaben" placeholder="0" step="0.01">
                     </div>
                 </div>
             </div>
@@ -603,9 +598,8 @@
                     <div class="chart-title"><span class="chart-title-dot" style="background:var(--accent-purple)"></span>KI-Analyse</div>
                     <div class="ai-body">
                         <div class="ai-text" id="ai-summary-content"></div>
-                        <div class="ai-charts-col" id="ai-charts-col">
-                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen vs Ausgaben</div><canvas id="ai-chart-ea"></canvas></div>
-                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Top Ausgaben (Kat1)</div><canvas id="ai-chart-top"></canvas></div>
+                        <div class="ai-charts-row">
+                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen / Ausgaben / Saldo</div><canvas id="ai-chart-ea"></canvas></div>
                             <div class="ai-mini-chart"><div class="ai-mini-chart-title">Monatstrend Saldo</div><canvas id="ai-chart-trend"></canvas></div>
                         </div>
                     </div>
@@ -826,27 +820,40 @@ function setTheme(t){
 function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark');}
 (function(){const s=localStorage.getItem('buchung-theme');setTheme(s||'dark');})();
 
-function toggleDetailFilters(){
-    const body=document.getElementById('detail-filter-body');
-    const arrow=document.getElementById('detail-filter-arrow');
-    const open=body.style.display==='none';
-    body.style.display=open?'':'none';
-    arrow.style.transform=open?'rotate(180deg)':'';
-}
-
 function printDashboard(){
     document.getElementById('print-date').textContent=new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     window.print();
 }
 
 // ---- Recent Files ----
+// ---- Recent Files (IndexedDB cache) ----
+function openFileDB(){
+    return new Promise((resolve,reject)=>{
+        const req=indexedDB.open('buchung-files',1);
+        req.onupgradeneeded=e=>e.target.result.createObjectStore('files');
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+    });
+}
+async function cacheFileData(name,buf){
+    try{const db=await openFileDB();const tx=db.transaction('files','readwrite');tx.objectStore('files').put(buf,name);} catch(e){}
+}
+async function getCachedFile(name){
+    try{const db=await openFileDB();return new Promise((res,rej)=>{const tx=db.transaction('files','readonly');const r=tx.objectStore('files').get(name);r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);});}catch(e){return null;}
+}
+async function removeCachedFile(name){
+    try{const db=await openFileDB();const tx=db.transaction('files','readwrite');tx.objectStore('files').delete(name);}catch(e){}
+}
 function getRecentFiles(){
     try{return JSON.parse(localStorage.getItem('buchung-recent-files')||'[]');}catch(e){return[];}
 }
 function saveRecentFile(name){
     let files=getRecentFiles().filter(f=>f.name!==name);
     files.unshift({name:name,date:new Date().toISOString()});
-    if(files.length>5) files=files.slice(0,5);
+    if(files.length>5){
+        const removed=files.splice(5);
+        removed.forEach(f=>removeCachedFile(f.name));
+    }
     localStorage.setItem('buchung-recent-files',JSON.stringify(files));
     renderRecentFiles();
 }
@@ -854,7 +861,15 @@ function removeRecentFile(name,evt){
     evt.stopPropagation();
     let files=getRecentFiles().filter(f=>f.name!==name);
     localStorage.setItem('buchung-recent-files',JSON.stringify(files));
+    removeCachedFile(name);
     renderRecentFiles();
+}
+async function openRecentFile(name){
+    const buf=await getCachedFile(name);
+    if(!buf){alert('Datei nicht mehr im Cache. Bitte erneut hochladen.');return;}
+    // Create a synthetic File object and process it
+    const file=new File([buf],name);
+    handleFile(file);
 }
 function renderRecentFiles(){
     const container=document.getElementById('recent-files-container');
@@ -863,7 +878,7 @@ function renderRecentFiles(){
     container.style.display='';
     const fmtD=d=>{try{return new Date(d).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return'';}};
     container.innerHTML=`<div class="recent-files-title">Zuletzt ge\u00f6ffnet</div>`+
-        files.map(f=>`<div class="recent-file-item" onclick="document.getElementById('file-input').click()" title="${f.name}">
+        files.map(f=>`<div class="recent-file-item" onclick="openRecentFile('${f.name.replace(/'/g,"\\'")}')" title="${f.name}">
             <span class="recent-file-icon">${/\.csv$/i.test(f.name)?'\ud83d\udcc4':'\ud83d\udcca'}</span>
             <span class="recent-file-name">${f.name}</span>
             <span class="recent-file-date">${fmtD(f.date)}</span>
@@ -947,6 +962,7 @@ function handleFile(file){
 
     const reader=new FileReader();
     reader.onload=e=>{
+        cacheFileData(file.name,e.target.result);
         try{
             let json;
             if(isCSV){
@@ -1503,44 +1519,31 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
 }
 
 function updateAIMiniCharts(sData,tE,tA,byMonth,mKeys){
-    const chartOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.y||ctx.parsed||0)}}},scales:{}};
-    const noAxis={display:false};
-
-    // Chart 1: Einnahmen vs Ausgaben (horizontal bar)
+    // Chart 1: Einnahmen vs Ausgaben (horizontal bar with value labels)
     if(charts._aiEA) charts._aiEA.destroy();
+    const saldo=tE-tA;
     charts._aiEA=new Chart(document.getElementById('ai-chart-ea'),{
         type:'bar',
-        data:{labels:['Einnahmen','Ausgaben','Saldo'],datasets:[{data:[tE,tA,tE-tA],backgroundColor:['#10b981','#ef4444',tE-tA>=0?'#4a6cf7':'#f59e0b'],borderRadius:4}]},
-        options:{...chartOpts,indexAxis:'y',scales:{x:{display:false},y:{ticks:{font:{size:10},color:'#94a3b8'},grid:{display:false}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.x)}}}}
+        data:{labels:['Einnahmen','Ausgaben','Saldo'],datasets:[{data:[tE,tA,saldo],backgroundColor:['#10b981','#ef4444',saldo>=0?'#4a6cf7':'#f59e0b'],borderRadius:4,barPercentage:0.7}]},
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+            scales:{x:{display:false,beginAtZero:true},y:{ticks:{font:{size:10,weight:'600'},color:'#94a3b8'},grid:{display:false}}},
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.x)}},
+                datalabels:{display:true,anchor:'end',align:'end',color:'#94a3b8',font:{size:10,weight:'700'},formatter:v=>fmtShort(v)}}}
     });
 
-    // Chart 2: Top Ausgaben Kat1 (doughnut)
-    if(charts._aiTop) charts._aiTop.destroy();
-    const byKat={};
-    if(COL_MAP.kat1!==null){
-        sData.forEach(r=>{const k=val(r,'kat1').toString().trim()||'Ohne';byKat[k]=(byKat[k]||0)+posNum(r,'ausgaben');});
-    }
-    const sorted=Object.entries(byKat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
-    const top5=sorted.slice(0,5);
-    const rest=sorted.slice(5).reduce((s,e)=>s+e[1],0);
-    const dLabels=top5.map(e=>e[0]);
-    const dValues=top5.map(e=>e[1]);
-    if(rest>0){dLabels.push('Sonstige');dValues.push(rest);}
-    charts._aiTop=new Chart(document.getElementById('ai-chart-top'),{
-        type:'doughnut',
-        data:{labels:dLabels,datasets:[{data:dValues,backgroundColor:dLabels.map(l=>getKatColor(l)),borderWidth:0}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:10,padding:4,color:'#94a3b8'}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.parsed)}}}}
-    });
-
-    // Chart 3: Monatstrend Saldo (line)
+    // Chart 2: Monatstrend Saldo (line with green/red fill)
     if(charts._aiTrend) charts._aiTrend.destroy();
     if(mKeys.length>=2){
         const labels=mKeys.map(k=>monthLabel(k));
         const saldi=mKeys.map(k=>byMonth[k].e-byMonth[k].a);
+        // Two datasets: one for positive fill, one for negative
         charts._aiTrend=new Chart(document.getElementById('ai-chart-trend'),{
             type:'line',
-            data:{labels:labels,datasets:[{data:saldi,borderColor:'#4a6cf7',backgroundColor:'rgba(74,108,247,0.1)',fill:true,tension:0.3,pointRadius:2,borderWidth:2}]},
-            options:{...chartOpts,scales:{x:{ticks:{font:{size:9},color:'#94a3b8',maxRotation:45},grid:{display:false}},y:{ticks:{font:{size:9},color:'#94a3b8',callback:v=>v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0)},grid:{color:'rgba(148,163,184,0.1)'}}}}
+            data:{labels:labels,datasets:[
+                {data:saldi,borderColor:'#64748b',backgroundColor:'rgba(16,185,129,0.15)',fill:{target:'origin',above:'rgba(16,185,129,0.18)',below:'rgba(239,68,68,0.18)'},tension:0.3,pointRadius:2,borderWidth:2}
+            ]},
+            options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmtCurrency(ctx.parsed.y)}},datalabels:{display:false}},
+                scales:{x:{ticks:{font:{size:8},color:'#94a3b8',maxRotation:45},grid:{display:false}},y:{ticks:{font:{size:8},color:'#94a3b8',callback:v=>v>=1000||v<=-1000?(v/1000).toFixed(0)+'k':v.toFixed(0)},grid:{color:'rgba(148,163,184,0.1)'}}}}
         });
     } else {
         const ctx=document.getElementById('ai-chart-trend').getContext('2d');
@@ -1680,7 +1683,7 @@ function updateMonthlyChart(){
 
         const datasets=topKats.map((k,i)=>({
             label:k,data:keys.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
-            backgroundColor:COLORS[i%COLORS.length]+'88',borderColor:COLORS[i%COLORS.length],borderWidth:1,borderRadius:3,
+            backgroundColor:getKatColor(k)+'88',borderColor:getKatColor(k),borderWidth:1,borderRadius:3,
         }));
         charts.monthly=new Chart(document.getElementById('chart-monthly'),{
             type:'bar',data:{labels:keys.map(monthLabel),datasets},
@@ -1721,7 +1724,7 @@ function updateMonthlyChart(){
 
         const datasets=topKats.map((k,i)=>({
             label:k,data:fKeys.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
-            backgroundColor:COLORS[i%COLORS.length]+'88',borderColor:COLORS[i%COLORS.length],borderWidth:1,borderRadius:3,
+            backgroundColor:getKatColor(k)+'88',borderColor:getKatColor(k),borderWidth:1,borderRadius:3,
         }));
         charts.monthly=new Chart(document.getElementById('chart-monthly'),{
             type:'bar',data:{labels:fKeys.map(monthLabel),datasets},
@@ -1843,8 +1846,8 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         if(sorted.length===0){titleEl.innerHTML+=` <span style="font-size:0.7rem;color:var(--text-muted)">(keine Daten)</span>`;return;}
         charts[chartId]=new Chart(document.getElementById(canvasId),{
             type:'doughnut',
-            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:sorted.map(e=>getKatColor(e[0])),borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'40%',
                 onClick:(evt,elems)=>{
                     if(elems.length>0) setDrill({cat:sorted[elems[0].index][0]});
                 },
@@ -1864,8 +1867,8 @@ function buildKatDoughnut(chartId,canvasId,data,katKey,amtKey,drillVar,drillVal,
         if(sorted.length===0) return;
         charts[chartId]=new Chart(document.getElementById(canvasId),{
             type:'doughnut',
-            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0,hoverOffset:6}]},
-            options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+            data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:sorted.map(e=>getKatColor(e[0])),borderWidth:0,hoverOffset:6}]},
+            options:{responsive:true,maintainAspectRatio:false,cutout:'40%',
                 onClick:(evt,elems)=>{
                     if(elems.length>0) setDrill({cat:drillVal.cat,sub:sorted[elems[0].index][0]});
                 },
@@ -1951,7 +1954,7 @@ function updateKat1TimeChart(){
 
     const datasets=topKats.map((k,i)=>({
         label:k,data:months.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
-        borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+'22',
+        borderColor:getKatColor(k),backgroundColor:getKatColor(k)+'22',
         fill:false,tension:0.3,borderWidth:2,pointRadius:2,
     }));
     charts.kat1time=new Chart(document.getElementById('chart-kat1-time'),{
@@ -1989,7 +1992,7 @@ function updateKat2TimeChart(){
 
     const datasets=topKats.map((k,i)=>({
         label:k,data:months.map(m=>(byMonthKat[m]&&byMonthKat[m][k])||0),
-        borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+'22',
+        borderColor:getKatColor(k),backgroundColor:getKatColor(k)+'22',
         fill:false,tension:0.3,borderWidth:2,pointRadius:2,
     }));
     charts.kat2time=new Chart(document.getElementById('chart-kat2-time'),{
@@ -2027,7 +2030,7 @@ function updateIncomeExpenseChart(){
     charts.incomeExpense=new Chart(document.getElementById('chart-income-expense'),{
         type:'doughnut',
         data:{labels:['Einnahmen','Ausgaben'],datasets:[{data:[tE,tA],backgroundColor:['#10b98188','#ef444488'],borderColor:['#10b981','#ef4444'],borderWidth:2,hoverOffset:6}]},
-        options:{responsive:true,maintainAspectRatio:false,cutout:'68%',
+        options:{responsive:true,maintainAspectRatio:false,cutout:'45%',
             plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:16,font:{size:11}}},
                 tooltip:{callbacks:{label:ctx=>ctx.label+': '+fmtCurrency(ctx.raw)}},
                 datalabels:{display:true,color:'#fff',font:{size:12,weight:700},formatter:v=>fmtShort(v)}}}
