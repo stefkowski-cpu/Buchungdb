@@ -1276,7 +1276,8 @@ function renderExclusionTags(key){
         const style=isExcl?'':`border-color:${col}33;color:${col};`;
         const cls=(isExcl?'excluded':'active')+(isIrr?' irrelevant':'');
         const title=isIrr?' title="Keine sichtbaren Daten (andere Kategorien ausgeblendet)"':'';
-        return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')"${title}>${v}</span>`;
+        const esc=v.replace(/'/g,"\\'");
+        return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${esc}')" ondblclick="soloExclusion('${key}','${esc}');event.preventDefault();"${title}>${v}</span>`;
     }).join('');
     const toggle=document.getElementById(`excl-toggle-${key}`);
     if(toggle){
@@ -1291,9 +1292,26 @@ function renderAllExclusionTags(){
     if(COL_MAP.kat2!==null) renderExclusionTags('kat2');
 }
 
+let _exclClickTimer=null;
 function toggleExclusion(key,value){
+    // Delay single-click to distinguish from dblclick
+    if(_exclClickTimer) clearTimeout(_exclClickTimer);
+    _exclClickTimer=setTimeout(()=>{
+        const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
+        if(set.has(value)) set.delete(value); else set.add(value);
+        renderAllExclusionTags();
+        applyAllFilters();
+    },250);
+}
+
+function soloExclusion(key,value){
+    // Cancel pending single-click
+    if(_exclClickTimer){clearTimeout(_exclClickTimer);_exclClickTimer=null;}
     const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
-    if(set.has(value)) set.delete(value); else set.add(value);
+    const allVals=getUnique(key);
+    // Exclude all except the double-clicked one
+    set.clear();
+    allVals.forEach(v=>{if(v!==value) set.add(v);});
     renderAllExclusionTags();
     applyAllFilters();
 }
