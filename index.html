@@ -256,9 +256,11 @@
             background: var(--tag-exclude-bg); color: var(--accent-red);
             border-color: rgba(239,68,68,0.2); text-decoration: line-through;
         }
-        .exclude-tag.auto-excluded {
-            color: var(--text-muted); border-color: rgba(148,163,184,0.2);
-            text-decoration: line-through; opacity: 0.5; cursor: default;
+        .exclude-tag.irrelevant {
+            opacity: 0.4; border-style: dashed;
+        }
+        .exclude-tag.irrelevant.excluded {
+            opacity: 0.4;
         }
 
         /* Expense analysis tags */
@@ -497,6 +499,11 @@
                 <div class="summary-mini" id="summary-mini"></div>
             </div>
 
+            <!-- Reset -->
+            <div class="sidebar-section" style="padding:8px 18px;">
+                <button class="btn btn-reset btn-sm no-print" onclick="resetAllFilters()" style="width:100%;justify-content:center;">Alle Filter zur&uuml;cksetzen</button>
+            </div>
+
             <!-- Time filters -->
             <div class="sidebar-section">
                 <div class="sidebar-label">Zeitraum</div>
@@ -583,11 +590,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Reset -->
-            <div class="sidebar-section" style="padding:12px 18px;">
-                <button class="btn btn-reset btn-sm no-print" onclick="resetAllFilters()" style="width:100%;justify-content:center;">Alle Filter zur&uuml;cksetzen</button>
-            </div>
         </div>
 
         <!-- RIGHT: Charts + Table -->
@@ -599,6 +601,7 @@
                     <div class="ai-body">
                         <div class="ai-text" id="ai-summary-content"></div>
                         <div class="ai-charts-row">
+                            <div class="ai-mini-chart"><div class="ai-mini-chart-title">Kategorien (Kat1)</div><canvas id="ai-chart-cloud"></canvas></div>
                             <div class="ai-mini-chart"><div class="ai-mini-chart-title">Einnahmen / Ausgaben / Saldo</div><canvas id="ai-chart-ea"></canvas></div>
                             <div class="ai-mini-chart"><div class="ai-mini-chart-title">Monatstrend Saldo</div><canvas id="ai-chart-trend"></canvas></div>
                         </div>
@@ -1241,43 +1244,40 @@ function buildExclusionTags(){
     }
 }
 
-// Compute which values in `key` are auto-excluded because they only appear
-// in rows where the OTHER Kat levels are all excluded
-function getAutoExcluded(key){
-    const auto=new Set();
+// Find which values in `key` have NO remaining rows after other Kat exclusions
+function getIrrelevant(key){
+    const irr=new Set();
     const otherKeys=['kat0','kat1','kat2'].filter(k=>k!==key&&COL_MAP[k]!==null);
-    if(otherKeys.length===0) return auto;
+    if(otherKeys.length===0) return irr;
     const values=getUnique(key);
     values.forEach(v=>{
-        // Find all rows that have this value
         const rows=rawData.filter(r=>val(r,key).toString().trim()===v);
-        if(rows.length===0) return;
-        // Check: is every such row excluded by at least one other Kat exclusion?
-        const allBlocked=rows.every(r=>{
-            return otherKeys.some(ok=>{
+        if(rows.length===0){irr.add(v);return;}
+        const anyVisible=rows.some(r=>{
+            return otherKeys.every(ok=>{
                 const set=ok==='kat0'?excludedKat0:ok==='kat1'?excludedKat1:excludedKat2;
-                return set.has(val(r,ok).toString().trim());
+                return !set.has(val(r,ok).toString().trim());
             });
         });
-        if(allBlocked) auto.add(v);
+        if(!anyVisible) irr.add(v);
     });
-    return auto;
+    return irr;
 }
 
 function renderExclusionTags(key){
     const container=document.getElementById(`exclude-${key}-tags`);
     const values=getUnique(key);
     const excluded=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
-    const autoExcl=getAutoExcluded(key);
+    const irrelevant=getIrrelevant(key);
     container.innerHTML=values.map(v=>{
         const isExcl=excluded.has(v);
-        const isAuto=!isExcl&&autoExcl.has(v);
+        const isIrr=irrelevant.has(v);
         const col=getKatColor(v);
-        const style=isExcl||isAuto?'':`border-color:${col}33;color:${col};`;
-        const cls=isExcl?'excluded':isAuto?'excluded auto-excluded':'active';
-        return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')" ${isAuto?'title="Automatisch ausgeblendet (alle zugehörigen Zeilen sind über andere Kategorien ausgeblendet)"':''}>${v}</span>`;
+        const style=isExcl?'':`border-color:${col}33;color:${col};`;
+        const cls=(isExcl?'excluded':'active')+(isIrr?' irrelevant':'');
+        const title=isIrr?' title="Keine sichtbaren Daten (andere Kategorien ausgeblendet)"':'';
+        return `<span class="exclude-tag ${cls}" data-key="${key}" data-val="${v}" style="${style}" onclick="toggleExclusion('${key}','${v.replace(/'/g,"\\'")}')"${title}>${v}</span>`;
     }).join('');
-    // Update toggle label
     const toggle=document.getElementById(`excl-toggle-${key}`);
     if(toggle){
         const allExcluded=values.length>0&&values.every(v=>excluded.has(v));
@@ -1518,7 +1518,81 @@ function updateAISummary(sData,tE,tA,saldo,cnt){
     updateAIMiniCharts(sData,tE,tA,byMonth,mKeys);
 }
 
+function drawWordCloud(canvasId,sData){
+    const canvas=document.getElementById(canvasId);
+    if(!canvas) return;
+    const ctx=canvas.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+    const rect=canvas.getBoundingClientRect();
+    canvas.width=rect.width*dpr;
+    canvas.height=rect.height*dpr;
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,rect.width,rect.height);
+
+    if(COL_MAP.kat1===null) return;
+    const byKat={};
+    sData.forEach(r=>{
+        const k=val(r,'kat1').toString().trim();if(!k) return;
+        if(!byKat[k]) byKat[k]={e:0,a:0};
+        byKat[k].e+=posNum(r,'einnahmen');
+        byKat[k].a+=posNum(r,'ausgaben');
+    });
+    const entries=Object.entries(byKat).map(([k,v])=>({name:k,net:v.e-v.a,total:v.e+v.a})).filter(e=>e.total>0);
+    if(entries.length===0) return;
+    entries.sort((a,b)=>b.total-a.total);
+
+    const maxT=entries[0].total;
+    const minFS=9,maxFS=22;
+    const W=rect.width,H=rect.height;
+    const padX=6,padY=3,pillR=10;
+
+    // Measure all words and compute sizes
+    const items=entries.map(e=>{
+        const fs=Math.max(minFS,Math.round(minFS+(maxFS-minFS)*Math.pow(e.total/maxT,0.5)));
+        ctx.font=`700 ${fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        const tw=ctx.measureText(e.name).width;
+        return{name:e.name,net:e.net,fs,w:tw+padX*2,h:fs+padY*2};
+    });
+
+    // Simple placement: row-based wrapping
+    const placed=[];
+    let cx=4,cy=4;
+    let rowH=0;
+    items.forEach(it=>{
+        if(cx+it.w>W-4){cx=4;cy+=rowH+4;rowH=0;}
+        if(cy+it.h>H-2) return;
+        it.x=cx;it.y=cy;
+        placed.push(it);
+        cx+=it.w+4;
+        rowH=Math.max(rowH,it.h);
+    });
+
+    // Draw pills
+    placed.forEach(it=>{
+        const col=it.net>=0?'#10b981':'#ef4444';
+        const bg=it.net>=0?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.12)';
+        // Pill background
+        ctx.fillStyle=bg;
+        ctx.beginPath();
+        const r=Math.min(pillR,it.h/2);
+        ctx.roundRect(it.x,it.y,it.w,it.h,r);
+        ctx.fill();
+        // Pill border
+        ctx.strokeStyle=col+'55';
+        ctx.lineWidth=1;
+        ctx.stroke();
+        // Text
+        ctx.fillStyle=col;
+        ctx.font=`700 ${it.fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        ctx.textBaseline='middle';
+        ctx.fillText(it.name,it.x+padX,it.y+it.h/2);
+    });
+}
+
 function updateAIMiniCharts(sData,tE,tA,byMonth,mKeys){
+    // Chart 0: Word cloud (Kat1)
+    drawWordCloud('ai-chart-cloud',sData);
+
     // Chart 1: Einnahmen vs Ausgaben (horizontal bar with value labels)
     if(charts._aiEA) charts._aiEA.destroy();
     const saldo=tE-tA;
@@ -1649,8 +1723,8 @@ function updateMonthlyChart(){
             data:{labels:keys.map(monthLabel),datasets:[
                 {label:'Einnahmen',data:keys.map(k=>byMonth[k].e),backgroundColor:'#10b98155',borderColor:'#10b981',borderWidth:2,borderRadius:5},
                 {label:'Ausgaben',data:keys.map(k=>byMonth[k].a),backgroundColor:'#ef444455',borderColor:'#ef4444',borderWidth:2,borderRadius:5},
-                {label:'\u00d8 Einnahmen',type:'line',data:keys.map(()=>avgE),borderColor:'#10b981',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
-                {label:'\u00d8 Ausgaben',type:'line',data:keys.map(()=>avgA),borderColor:'#ef4444',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:false},order:0},
+                {label:'\u00d8 Einnahmen',type:'line',data:keys.map(()=>avgE),borderColor:'#10b981',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:ctx=>ctx.dataIndex===keys.length-1,anchor:'end',align:'right',color:'#10b981',font:{size:10,weight:'700'},formatter:v=>fmtShort(v)},order:0},
+                {label:'\u00d8 Ausgaben',type:'line',data:keys.map(()=>avgA),borderColor:'#ef4444',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,datalabels:{display:ctx=>ctx.dataIndex===keys.length-1,anchor:'end',align:'right',color:'#ef4444',font:{size:10,weight:'700'},formatter:v=>fmtShort(v)},order:0},
             ]},
             options:{responsive:true,maintainAspectRatio:false,
                 onClick:(evt,elems)=>{
