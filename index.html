@@ -1314,6 +1314,7 @@ function soloExclusion(key,value){
 function showAllExclusions(key){
     const set=key==='kat0'?excludedKat0:key==='kat1'?excludedKat1:excludedKat2;
     set.clear();
+    applyDefaultExclusions();
     renderAllExclusionTags();
     applyAllFilters();
 }
@@ -1561,14 +1562,14 @@ function drawWordCloud(canvasId,sData){
     // Measure all words with amount subtitle
     const items=entries.map(e=>{
         const fs=Math.max(minFS,Math.round(minFS+(maxFS-minFS)*Math.pow(e.total/maxT,0.5)));
-        const subFS=Math.max(7,Math.round(fs*0.55));
+        const subFS=Math.max(8,Math.round(fs*0.65));
         ctx.font=`700 ${fs}px -apple-system,BlinkMacSystemFont,sans-serif`;
         const tw=ctx.measureText(e.name).width;
-        const amtText=fmtShort(Math.abs(e.net));
-        ctx.font=`600 ${subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        const amtText=(e.net>=0?'+':'')+fmtShort(e.net)+' \u20ac';
+        ctx.font=`700 ${subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
         const aw=ctx.measureText(amtText).width;
         const w=Math.max(tw,aw)+padX*2;
-        const h=fs+subFS+padY*2+1;
+        const h=fs+subFS+padY*2+2;
         return{name:e.name,net:e.net,amt:amtText,fs,subFS,w,h};
     });
 
@@ -1603,9 +1604,8 @@ function drawWordCloud(canvasId,sData){
         ctx.textBaseline='top';
         ctx.fillText(it.name,it.x+padX,it.y+padY);
         // Amount below
-        ctx.font=`600 ${it.subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
-        ctx.globalAlpha=0.7;
-        ctx.fillText(it.amt,it.x+padX,it.y+padY+it.fs+1);
+        ctx.font=`700 ${it.subFS}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        ctx.fillText(it.amt,it.x+padX,it.y+padY+it.fs+2);
         ctx.globalAlpha=1;
     });
 }
