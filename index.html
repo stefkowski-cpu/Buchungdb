@@ -1111,7 +1111,7 @@ function applyDefaultExclusions(){
     }
     if(COL_MAP.kat1!==null){
         const kat1Vals=getUnique('kat1');
-        ['Umschichtung','Haus'].forEach(v=>{if(kat1Vals.includes(v))excludedKat1.add(v);});
+        if(kat1Vals.includes('Umschichtung'))excludedKat1.add('Umschichtung');
     }
     if(COL_MAP.kat2!==null){
         const kat2Vals=getUnique('kat2');
